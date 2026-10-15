@@ -16,8 +16,8 @@ iPhoneアプリ（フェーズ2）は今後追加予定です。
 
 ```bash
 cd web
-cp .env.example .env    # SESSION_SECRET を任意の値に変更
 npm install
+npm run env:init        # .env を作成し、SESSION_SECRET にランダムな値を設定
 npm run db:push
 npm run dev             # http://localhost:3000
 ```

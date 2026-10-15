@@ -2,13 +2,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "./db";
+import { SESSION_SECRET_FIX, sessionSecretProblem } from "./session-secret";
 
 const COOKIE = "session";
 const MAX_AGE = 60 * 60 * 24 * 30;
 
 function secret(): string {
   const s = process.env.SESSION_SECRET;
-  if (!s || s === "change-me") throw new Error("SESSION_SECRET is not set");
+  const problem = sessionSecretProblem(s);
+  if (problem || !s) throw new Error(`${problem} ${SESSION_SECRET_FIX}`);
   return s;
 }
 

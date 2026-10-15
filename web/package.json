@@ -10,6 +10,7 @@
     "test": "vitest run",
     "db:push": "prisma db push",
     "postinstall": "prisma generate",
+    "env:init": "tsx scripts/init-env.ts",
     "check:apis": "tsx --env-file=.env scripts/check-apis.ts",
     "test:e2e": "playwright test"
   },
