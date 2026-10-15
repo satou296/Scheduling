@@ -11,8 +11,8 @@
 ## 起動
 
 ```bash
-cp .env.example .env    # SESSION_SECRET を変更
 npm install
+npm run env:init        # .env を作成し、SESSION_SECRET にランダムな値を設定
 npm run db:push
 npm run dev             # http://localhost:3000
 npm test                # 判定ロジック・スケジューラ・経路APIのテスト

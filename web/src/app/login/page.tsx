@@ -3,10 +3,27 @@ import { devLogin } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { googleConfigured } from "@/lib/google-oauth";
 import { devLoginEnabled, getCurrentUser, safeNext } from "@/lib/session";
+import { SESSION_SECRET_FIX, sessionSecretProblem } from "@/lib/session-secret";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const next = safeNext(typeof sp.next === "string" ? sp.next : null);
+
+  // 署名鍵がないとログインできない（セッションCookieを作れない）ので、操作する前に直し方を示す
+  const secretProblem = sessionSecretProblem(process.env.SESSION_SECRET);
+  if (secretProblem) {
+    return (
+      <div className="mx-auto max-w-sm space-y-6 pt-8">
+        <h1 className="text-center text-2xl font-bold">スケジュール調整</h1>
+        <div className="notice-warn space-y-2" role="alert">
+          <p className="font-semibold">サーバーの設定が完了していないため、ログインできません。</p>
+          <p>{secretProblem}</p>
+          <p>{SESSION_SECRET_FIX}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (await getCurrentUser()) redirect(next);
 
   return (

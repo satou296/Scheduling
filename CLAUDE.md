@@ -66,8 +66,8 @@ npm run test:e2e   # UI・画面遷移を変更したとき（Safari/Chrome/Fire
 
 ```bash
 cd web
-cp .env.example .env     # SESSION_SECRET を変更
 npm install              # postinstall で prisma generate
+npm run env:init         # .env を作成し、SESSION_SECRET にランダムな値を設定（設定済みなら変更しない）
 npm run db:push
 npm run dev              # http://localhost:3000
 ```
