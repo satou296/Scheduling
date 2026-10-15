@@ -6,7 +6,7 @@ async function newUser(
   browser: Browser,
   contextOptions: Parameters<Browser["newContext"]>[0],
   name: string,
-  opts: { calendar?: boolean; busy?: [string, string] } = {},
+  opts: { calendar?: boolean; busy?: [string, string]; allDay?: string } = {},
 ): Promise<Page> {
   const page = await (await browser.newContext(contextOptions)).newPage();
   await page.goto("/login");
@@ -29,6 +29,14 @@ async function newUser(
     await page.locator('input[name="end"]').fill(opts.busy[1]);
     await page.locator("form", { has: page.locator('input[name="start"]') }).getByRole("button", { name: "追加" }).click();
     await expect(page.getByText("バイト")).toBeVisible();
+  }
+  if (opts.allDay) {
+    await page.goto("/settings");
+    const form = page.getByRole("form", { name: "終日の予定を追加" });
+    await form.getByPlaceholder("終日の予定名").fill("旅行");
+    await form.locator('input[name="startDate"]').fill(opts.allDay);
+    await form.getByRole("button", { name: "終日の予定を追加" }).click();
+    await expect(page.getByText("旅行")).toBeVisible();
   }
   return page;
 }
@@ -96,11 +104,8 @@ test("調整の作成から確定、あとから参加まで", async ({ browser 
   expect(ics.headers()["content-type"]).toContain("text/calendar");
   expect(await ics.text()).toContain("BEGIN:VEVENT");
 
-  // あとから参加：確定枠に予定があるので不参加
-  const late = await newUser(browser, ctx, `後から-${suffix}`, {
-    calendar: true,
-    busy: ["2099-11-08T15:00", "2099-11-08T18:00"],
-  });
+  // あとから参加：確定枠の日に終日の予定があるので不参加
+  const late = await newUser(browser, ctx, `後から-${suffix}`, { calendar: true, allDay: "2099-11-08" });
   await late.goto(invitePath);
   await late.getByRole("button", { name: "このグループに参加する" }).click();
   await late.waitForURL(/\/groups\//);

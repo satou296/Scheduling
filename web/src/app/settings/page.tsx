@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { addDevBusy, deleteDevBusy, updateSettings } from "@/app/actions";
+import { addDevAllDay, addDevBusy, deleteDevBusy, updateSettings } from "@/app/actions";
 import { CalendarLink } from "@/components/CalendarLink";
 import { OriginList } from "@/components/OriginList";
 import { SubmitButton } from "@/components/SubmitButton";
 import { TravelModeSelect } from "@/components/TravelModeSelect";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { formatSlot } from "@/lib/time";
+import { addMinutes, formatDate, formatSlot } from "@/lib/time";
 
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const sp = await searchParams;
@@ -57,7 +57,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             {devEvents.map((e) => (
               <li key={e.id} className="flex items-center justify-between gap-2">
                 <span>
-                  {formatSlot(e.start, e.end)} {e.title}
+                  {e.allDay ? (
+                    <>
+                      {formatDate(e.start)}
+                      {addMinutes(e.end, -1).getTime() - e.start.getTime() >= 24 * 3600_000 &&
+                        `〜${formatDate(addMinutes(e.end, -1))}`}{" "}
+                      <span className="badge bg-background">終日</span>
+                    </>
+                  ) : (
+                    formatSlot(e.start, e.end)
+                  )}{" "}
+                  {e.title}
                 </span>
                 <form action={deleteDevBusy}>
                   <input type="hidden" name="id" value={e.id} />
@@ -71,6 +81,18 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             <input type="datetime-local" name="start" className="input w-auto" required />
             <input type="datetime-local" name="end" className="input w-auto" required />
             <SubmitButton className="btn-secondary">追加</SubmitButton>
+          </form>
+          <form action={addDevAllDay} className="flex flex-wrap items-end gap-2" aria-label="終日の予定を追加">
+            <input name="title" className="input w-28" placeholder="終日の予定名" />
+            <label className="text-xs text-muted">
+              開始日
+              <input type="date" name="startDate" className="input w-auto" required />
+            </label>
+            <label className="text-xs text-muted">
+              終了日（任意）
+              <input type="date" name="endDate" className="input w-auto" />
+            </label>
+            <SubmitButton className="btn-secondary">終日の予定を追加</SubmitButton>
           </form>
           <Link href="/dev/mails" className="text-sm text-primary underline">
             送信メールの確認 →

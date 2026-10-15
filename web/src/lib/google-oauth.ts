@@ -2,11 +2,9 @@ import { OAuth2Client } from "google-auth-library";
 import { prisma } from "./db";
 
 export const LOGIN_SCOPES = ["openid", "email", "profile"];
-// 空き／埋まり（FreeBusy）の取得と、確定した予定の書き込みだけを要求する
-export const CALENDAR_SCOPES = [
-  "https://www.googleapis.com/auth/calendar.freebusy",
-  "https://www.googleapis.com/auth/calendar.events.owned",
-];
+// 自分が所有するカレンダーの予定だけを対象にする権限。
+// 予定の日時の取得（内容は取得しない：calendar.ts の EVENT_FIELDS）と、確定した予定の書き込みに使う
+export const CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.events.owned"];
 
 export function googleConfigured(): boolean {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);

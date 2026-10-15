@@ -102,6 +102,20 @@ describe("judgeEvent", () => {
     expect(members.find((m) => m.userId === org.id)?.attendance).toBe("ATTENDING");
   });
 
+  it("終日の予定がある日は不可", async () => {
+    const org = await user();
+    const a = await user();
+    // 11/8 の終日の予定（0:00〜翌 0:00）
+    await prisma.devCalendarEvent.create({
+      data: { userId: a.id, title: "旅行", start: t("2026-11-08T00:00"), end: t("2026-11-09T00:00"), allDay: true },
+    });
+    const e = await event(org.id, [["2026-11-08T13:00", "2026-11-08T16:00"], ["2026-11-09T13:00", "2026-11-09T16:00"]], [a.id]);
+    await judgeEvent(e.id);
+    const after = await prisma.event.findUniqueOrThrow({ where: { id: e.id } });
+    expect(after.status).toBe("CONFIRMED");
+    expect(after.confirmedSlotId).toBe(e.slots[1].id); // 11/9 の枠だけが全員OK
+  });
+
   it("手入力のメンバーは〇×をそのまま使う", async () => {
     const org = await user();
     const m = await user({ linked: false });
