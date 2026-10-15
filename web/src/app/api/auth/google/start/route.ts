@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { CALENDAR_SCOPES, LOGIN_SCOPES, googleConfigured, oauthClient } from "@/lib/google-oauth";
 import { safeNext, sign } from "@/lib/session";
 
-// ?calendar=1 のときはカレンダー連携（FreeBusy＋予定の書き込み）の権限を追加で求める
+// ?calendar=1 のときはカレンダー連携（予定の日時の取得＋確定した予定の書き込み）の権限を追加で求める
 export async function GET(req: NextRequest) {
   if (!googleConfigured()) {
     return NextResponse.json({ error: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET が未設定です" }, { status: 500 });

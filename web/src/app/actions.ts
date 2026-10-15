@@ -16,7 +16,7 @@ import {
 } from "@/lib/scheduler";
 import { scheduleWake } from "@/lib/timers";
 import { devLoginEnabled, requireUser, safeNext, setSession } from "@/lib/session";
-import { addMinutes, parseJstDateTime, parseJstLocal } from "@/lib/time";
+import { addMinutes, parseJstDateTime, parseJstLocal, startOfDayInZone } from "@/lib/time";
 
 function str(form: FormData, key: string): string {
   return String(form.get(key) ?? "").trim();
@@ -151,6 +151,21 @@ export async function addDevBusy(form: FormData) {
   const end = parseJstLocal(str(form, "end"));
   if (end <= start) throw new Error("終了は開始より後にしてください");
   await prisma.devCalendarEvent.create({ data: { userId: user.id, title: str(form, "title") || "予定", start, end } });
+  revalidatePath("/settings");
+}
+
+export async function addDevAllDay(form: FormData) {
+  const user = await requireUser();
+  if (!user.isDevUser) throw new Error("開発用ユーザーのみ");
+  const startDate = str(form, "startDate");
+  const endDate = str(form, "endDate") || startDate;
+  if (endDate < startDate) throw new Error("終了日は開始日以降にしてください");
+  // Google カレンダーと同じく、終了は最終日の翌日 0:00（その日を含まない）
+  const start = startOfDayInZone(startDate);
+  const end = addMinutes(startOfDayInZone(endDate), 24 * 60);
+  await prisma.devCalendarEvent.create({
+    data: { userId: user.id, title: str(form, "title") || "終日の予定", start, end, allDay: true },
+  });
   revalidatePath("/settings");
 }
 

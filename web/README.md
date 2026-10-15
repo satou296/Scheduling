@@ -4,7 +4,7 @@
 
 - Next.js 16（App Router / Server Actions）+ TypeScript + Tailwind CSS v4
 - Prisma 6 + SQLite（本番は PostgreSQL などに `provider` を変更可）
-- Google OAuth（ログイン・カレンダー連携）、Google Calendar FreeBusy / Events API
+- Google OAuth（ログイン・カレンダー連携）、Google Calendar Events API（予定の日時のみ取得）
 - 経路検索：Google Routes API（車・徒歩・自転車）、NAVITIME totalnavi via RapidAPI（電車・バス）
 - メール：SMTP（nodemailer）
 
@@ -31,7 +31,7 @@ APIキーが未設定でも動きます。
 
 | 用途 | 設定する環境変数 | 準備内容 |
 | --- | --- | --- |
-| ログイン・カレンダー | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud で OAuth クライアント（Webアプリ）を作成。リダイレクトURI：`${APP_URL}/api/auth/google/callback`。Google Calendar API を有効化。OAuth同意画面にスコープ `calendar.freebusy` と `calendar.events.owned` を追加 |
+| ログイン・カレンダー | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud で OAuth クライアント（Webアプリ）を作成。リダイレクトURI：`${APP_URL}/api/auth/google/callback`。Google Calendar API を有効化。OAuth同意画面にスコープ `calendar.events.owned` を追加 |
 | 車・徒歩・自転車 | `GOOGLE_ROUTES_API_KEY` | Routes API を有効化。要件どおり **クォータを1日1,000件**、**予算アラート** を Google Cloud 側で設定 |
 | 電車・バス（推奨） | `RAPIDAPI_KEY` / `RAPIDAPI_NAVITIME_HOST` / `RAPIDAPI_NAVITIME_GEOCODING_HOST` | RapidAPI で NAVITIME Route(totalnavi) と NAVITIME Geocoding を購読。ホスト名は購読画面の値を設定 |
 | 電車・バス（代替） | `EKISPERT_API_KEY` | 駅すぱあと API。両方設定した場合は `TRANSIT_PROVIDER`（`navitime` / `ekispert`）で選択 |
@@ -47,7 +47,7 @@ APIキーが未設定でも動きます。
 
 | 要件 | 実装場所 |
 | --- | --- |
-| F-01, F-02 ログイン・カレンダー連携（FreeBusyのみ取得） | `src/app/api/auth/google/*`, `src/lib/calendar.ts` |
+| F-01, F-02 ログイン・カレンダー連携（予定の日時のみ取得。内容は取得しない） | `src/app/api/auth/google/*`, `src/lib/calendar.ts` |
 | F-03, F-04 出発地点（複数・標準切替）、移動手段 | `src/app/onboarding`, `src/app/settings` |
 | F-11, F-12 グループ作成・招待リンク・グループ参加 | `src/app/groups`, `src/app/invite/[token]`, `src/lib/groups.ts` |
 | F-13, F-14 候補入力・〇×手入力 | `src/app/events/new`, `src/app/invite/[token]`, `src/app/events/[id]` |
@@ -70,6 +70,10 @@ APIキーが未設定でも動きます。
 - **期限前のリマインド** は選択期限の3時間前に1回送信（`REMINDER_BEFORE_HOURS`）。
 - **判定の速さ**：判定・選択期限・リマインドの時刻にタイマーを設定して即座に実行します。判定時刻を過ぎた調整の画面を開いた場合も、その場で判定します。
 - **経路キャッシュ** のキーは「起点・集合場所・移動手段・行き/帰り・平日/土日・時」。有効期限30日。
+- **予定の扱い**（要件「予定は内容にかかわらずすべて不可」を優先）：終日の予定、「予定なし（空き時間として表示）」の予定も不可。
+  FreeBusy API はこれらを返さないため、Events API から日時・種類・自分の出欠だけを取得しています（タイトル・説明・場所・参加者は取得しない）。
+  ただし、キャンセルされた予定、自分が「不参加」と回答した招待、カレンダーが自動表示する連絡先の誕生日・勤務場所は除きます。
+  対象はメインのカレンダーのみです。
 - カレンダー取得に失敗したメンバーは、〇×の手入力があればそれで判定、なければ×。
 - 候補の出し直しは、全員不可時（F-19）のみ。メンバーはそのままで、1時間後に再判定します。
 - 自分の移動時間は本人にだけ表示し、他メンバーには参加可否（〇×）のみ表示します。

@@ -33,13 +33,13 @@ async function main() {
       : { status: "未設定", detail: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET" },
   );
 
-  await check("Google Calendar（FreeBusy）", async () => {
+  await check("Google Calendar（予定の日時）", async () => {
     const user = await prisma.user.findFirst({ where: { calendarLinked: true, isDevUser: false } });
     if (!user) return { status: "未設定", detail: "カレンダー連携済みのユーザーがいません（ログイン後に連携してから再実行）" };
     const busy = await getBusy(user.id, new Date(), at);
     return busy
       ? { status: "OK", detail: `${user.email}：今後24時間の埋まり ${busy.length}件` }
-      : { status: "NG", detail: `${user.email} の FreeBusy を取得できません（サーバーログを確認）` };
+      : { status: "NG", detail: `${user.email} の予定の日時を取得できません（サーバーログを確認）` };
   });
 
   await check("Google Routes（車・徒歩・自転車）", async () => {
