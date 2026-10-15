@@ -1,0 +1,75 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { StatusBadge } from "@/components/StatusBadge";
+import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/session";
+import { formatDateTime, formatSlot } from "@/lib/time";
+
+export default async function HomePage() {
+  const user = await requireUser("/home");
+  if (!user.onboarded) redirect("/onboarding");
+
+  const memberships = await prisma.eventMember.findMany({
+    where: { userId: user.id },
+    include: { event: { include: { slots: true, members: true } } },
+    orderBy: { joinedAt: "desc" },
+  });
+  const active = memberships.filter((m) => m.event.status !== "CONFIRMED" && m.event.status !== "CANCELLED");
+  const confirmed = memberships
+    .filter((m) => m.event.status === "CONFIRMED")
+    .map((m) => ({ m, slot: m.event.slots.find((s) => s.id === m.event.confirmedSlotId)! }))
+    .sort((a, b) => a.slot.start.getTime() - b.slot.start.getTime());
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">ホーム</h1>
+        <Link href="/events/new" className="btn-primary">
+          ＋ 調整を作成
+        </Link>
+      </div>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted">参加中の調整</h2>
+        {active.length === 0 && <p className="card text-sm text-muted">参加中の調整はありません。</p>}
+        {active.map(({ event: e }) => {
+          const isOrganizer = e.organizerId === user.id;
+          const needsAction = isOrganizer && (e.status === "AWAITING_CHOICE" || e.status === "AWAITING_FALLBACK");
+          return (
+            <Link key={e.id} href={needsAction ? `/events/${e.id}/choose` : `/events/${e.id}`} className="card block hover:border-primary">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold">{e.title}</p>
+                <StatusBadge status={e.status} />
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                {isOrganizer ? "主催" : "参加"} ・ メンバー{e.members.length}人 ・ 候補
+                {e.slots.filter((s) => s.round === e.round).length}件
+                {e.status === "COLLECTING" && ` ・ ${formatDateTime(e.judgeAt)} に判定`}
+              </p>
+              {needsAction && <p className="mt-2 text-sm font-semibold text-warn">枠を選んでください →</p>}
+            </Link>
+          );
+        })}
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted">確定済みの予定</h2>
+        {confirmed.length === 0 && <p className="card text-sm text-muted">確定済みの予定はありません。</p>}
+        {confirmed.map(({ m, slot }) => (
+          <Link key={m.id} href={`/events/${m.eventId}`} className="card block hover:border-primary">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold">{m.event.title}</p>
+              {m.attendance === "NOT_ATTENDING" ? (
+                <span className="badge bg-ng-bg text-ng">不参加</span>
+              ) : (
+                <span className="badge bg-ok-bg text-ok">参加</span>
+              )}
+            </div>
+            <p className="mt-1 text-sm">{formatSlot(slot.start, slot.end)}</p>
+            <p className="text-xs text-muted">{m.event.meetingPlace}</p>
+          </Link>
+        ))}
+      </section>
+    </div>
+  );
+}

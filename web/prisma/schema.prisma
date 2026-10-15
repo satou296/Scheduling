@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  googleSub      String?   @unique
+  email          String    @unique
+  name           String
+  image          String?
+  // Google OAuth トークン（カレンダー連携時のみ使用）
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  calendarLinked Boolean   @default(false)
+  // TRANSIT | DRIVE | WALK | BICYCLE
+  travelMode     String    @default("TRANSIT")
+  notifyEmail    Boolean   @default(true)
+  onboarded      Boolean   @default(false)
+  isDevUser      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  origins     Origin[]
+  memberships EventMember[]
+  organized   Event[]       @relation("organizer")
+}
+
+model Origin {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String
+  address   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Event {
+  id             String    @id @default(cuid())
+  organizerId    String
+  title          String
+  meetingPlace   String
+  inviteToken    String    @unique
+  // COLLECTING | AWAITING_CHOICE | AWAITING_FALLBACK | CONFIRMED | CANCELLED
+  status         String    @default("COLLECTING")
+  round          Int       @default(1)
+  judgeAt        DateTime
+  judgedAt       DateTime?
+  choiceDeadline DateTime?
+  reminderSentAt DateTime?
+  confirmedSlotId String?
+  confirmedAt    DateTime?
+  // 判定時に移動時間を計算できなかったメンバーがいたか
+  travelUncomputed Boolean @default(false)
+  createdAt      DateTime  @default(now())
+
+  organizer User          @relation("organizer", fields: [organizerId], references: [id])
+  members   EventMember[]
+  slots     Slot[]
+}
+
+model EventMember {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  // ORGANIZER | MEMBER
+  role      String   @default("MEMBER")
+  joinedAt  DateTime @default(now())
+  // 確定後の状態: ATTENDING | NOT_ATTENDING | null
+  attendance String?
+  calendarEventId String?
+
+  event   Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers ManualAnswer[]
+  results SlotResult[]
+
+  @@unique([eventId, userId])
+}
+
+model Slot {
+  id      String   @id @default(cuid())
+  eventId String
+  round   Int
+  start   DateTime
+  end     DateTime
+
+  event   Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  answers ManualAnswer[]
+  results SlotResult[]
+}
+
+model ManualAnswer {
+  id        String  @id @default(cuid())
+  memberId  String
+  slotId    String
+  available Boolean
+
+  member EventMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  slot   Slot        @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, slotId])
+}
+
+model SlotResult {
+  id             String   @id @default(cuid())
+  slotId         String
+  memberId       String
+  available      Boolean
+  // CALENDAR | MANUAL
+  source         String
+  travelComputed Boolean  @default(true)
+  outboundMin    Int?
+  returnMin      Int?
+  // 判定後に参加したメンバーの結果（主催者の選択材料として表示）
+  lateJoin       Boolean  @default(false)
+  judgedAt       DateTime @default(now())
+
+  slot   Slot        @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  member EventMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, memberId])
+}
+
+model RouteCache {
+  key       String   @id
+  minutes   Int
+  createdAt DateTime @default(now())
+}
+
+model ApiUsage {
+  id        String    @id @default(cuid())
+  provider  String
+  month     String
+  count     Int       @default(0)
+  warnedAt  DateTime?
+  stoppedAt DateTime?
+
+  @@unique([provider, month])
+}
+
+model MailLog {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  body      String
+  sent      Boolean
+  createdAt DateTime @default(now())
+}
+
+// 開発用ログインのユーザーが使うモックカレンダー（DEV_LOGIN=true のときのみ使用）
+model DevCalendarEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  start     DateTime
+  end       DateTime
+  createdAt DateTime @default(now())
+}

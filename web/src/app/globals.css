@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --foreground: #1c1f24;
+  --muted: #6b7280;
+  --border: #e3e6ea;
+  --primary: #2f6fed;
+  --primary-fg: #ffffff;
+  --ok: #18864b;
+  --ok-bg: #e7f6ee;
+  --ng: #c43d3d;
+  --ng-bg: #fbeaea;
+  --warn: #9a6100;
+  --warn-bg: #fff5df;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #111316;
+    --surface: #1a1d21;
+    --foreground: #e8eaed;
+    --muted: #9aa0a8;
+    --border: #2c3036;
+    --primary: #5b8ef5;
+    --primary-fg: #0b0d10;
+    --ok: #5fd08f;
+    --ok-bg: #16301f;
+    --ng: #f08080;
+    --ng-bg: #3a1c1c;
+    --warn: #f0c060;
+    --warn-bg: #352a12;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-ng: var(--ng);
+  --color-ng-bg: var(--ng-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+}
+
+@utility card {
+  @apply rounded-xl border border-border bg-surface p-4 sm:p-5;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-primary text-primary-fg hover:opacity-90;
+}
+
+@utility btn-secondary {
+  @apply btn border border-border bg-surface hover:bg-background;
+}
+
+@utility btn-danger {
+  @apply btn border border-border bg-surface text-ng hover:bg-ng-bg;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary;
+}
+
+@utility label {
+  @apply mb-1 block text-sm font-medium;
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
+}
+
+@utility notice-warn {
+  @apply rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn;
+}
