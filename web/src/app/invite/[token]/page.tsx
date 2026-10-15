@@ -1,9 +1,10 @@
 import { notFound, redirect } from "next/navigation";
-import { joinEvent } from "@/app/actions";
+import { joinGroupByInvite } from "@/app/actions";
 import { AnswerInputs } from "@/components/AnswerInputs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmitButton } from "@/components/SubmitButton";
 import { prisma } from "@/lib/db";
+import { answerSlots, isJoinable } from "@/lib/groups";
 import { requireUser } from "@/lib/session";
 import { formatSlot } from "@/lib/time";
 
@@ -12,62 +13,71 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
   const user = await requireUser(`/invite/${token}`);
   if (!user.onboarded) redirect(`/onboarding?next=${encodeURIComponent(`/invite/${token}`)}`);
 
-  const event = await prisma.event.findUnique({
+  const group = await prisma.group.findUnique({
     where: { inviteToken: token },
-    include: { organizer: true, slots: true, members: true },
+    include: {
+      owner: true,
+      members: { include: { user: true } },
+      events: { include: { slots: true }, orderBy: { createdAt: "asc" } },
+    },
   });
-  if (!event || event.status === "CANCELLED") notFound();
-  if (event.members.some((m) => m.userId === user.id)) redirect(`/events/${event.id}`);
+  if (!group) notFound();
+  if (group.members.some((m) => m.userId === user.id)) redirect(`/groups/${group.id}`);
 
-  const slots = event.slots
-    .filter((s) => s.round === event.round)
-    .sort((a, b) => a.start.getTime() - b.start.getTime());
-  const confirmed = event.slots.find((s) => s.id === event.confirmedSlotId);
-  const action = joinEvent.bind(null, token);
+  const events = group.events.filter((e) => isJoinable(e));
+  const action = joinGroupByInvite.bind(null, token);
 
   return (
     <div className="space-y-5">
       <div className="card space-y-2">
-        <p className="text-xs text-muted">{event.organizer.name} さんからの招待</p>
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-xl font-bold">{event.title}</h1>
-          <StatusBadge status={event.status} />
-        </div>
-        <p className="text-sm">集合場所：{event.meetingPlace}</p>
-        <p className="text-sm text-muted">メンバー {event.members.length}人</p>
+        <p className="text-xs text-muted">{group.owner.name} さんからの招待</p>
+        <h1 className="text-xl font-bold">{group.name}</h1>
+        <p className="text-sm text-muted">
+          メンバー {group.members.length}人：{group.members.map((m) => m.user.name).join("、")}
+        </p>
       </div>
 
-      <form action={action} className="card space-y-4">
-        {confirmed ? (
-          <p className="text-sm">
-            予定はすでに <b>{formatSlot(confirmed.start, confirmed.end)}</b> に確定しています。
-            参加すると、この日時に参加できるかを判定し、参加できる場合は参加者に追加されます。
-          </p>
-        ) : user.calendarLinked ? (
-          <>
-            <h2 className="font-semibold">候補</h2>
-            <ul className="space-y-1 text-sm">
-              {slots.map((s) => (
-                <li key={s.id}>・{formatSlot(s.start, s.end)}</li>
-              ))}
-            </ul>
-            <p className="text-sm text-muted">
-              Googleカレンダーの空き状況と移動時間から、自動で参加可否を判定します。
-            </p>
-          </>
-        ) : (
-          <>
-            <h2 className="font-semibold">候補ごとに〇×を入力してください</h2>
-            <AnswerInputs slots={slots} />
-            <p className="text-xs text-muted">カレンダーを連携すると入力は不要になります（設定から連携できます）。</p>
-          </>
+      <form action={action} className="space-y-4">
+        {events.length === 0 && (
+          <p className="card text-sm text-muted">進行中の調整はありません。参加すると、次の調整から加わります。</p>
         )}
-        {confirmed && !user.calendarLinked && (
-          <>
-            <AnswerInputs slots={[confirmed]} />
-          </>
+        {events.map((e) => {
+          const slots = answerSlots(e);
+          const confirmed = e.status === "CONFIRMED";
+          return (
+            <section key={e.id} className="card space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-semibold">{e.title}</h2>
+                <StatusBadge status={e.status} />
+              </div>
+              <p className="text-sm">集合場所：{e.meetingPlace}</p>
+              {confirmed && (
+                <p className="text-sm text-muted">
+                  予定は確定済みです。参加すると、この日時に参加できるかを判定し、参加できる場合は参加者に追加されます。
+                </p>
+              )}
+              {user.calendarLinked ? (
+                <>
+                  <ul className="space-y-1 text-sm">
+                    {slots.map((s) => (
+                      <li key={s.id}>・{formatSlot(s.start, s.end)}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted">Googleカレンダーの空き状況と移動時間から自動で判定します。</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">候補ごとに〇×を入力してください</p>
+                  <AnswerInputs slots={slots} />
+                </>
+              )}
+            </section>
+          );
+        })}
+        {!user.calendarLinked && events.length > 0 && (
+          <p className="text-xs text-muted">カレンダーを連携すると入力は不要になります（設定から連携できます）。</p>
         )}
-        <SubmitButton>この調整に参加する</SubmitButton>
+        <SubmitButton>このグループに参加する</SubmitButton>
       </form>
     </div>
   );

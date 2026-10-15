@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-e2e/
 /out/
 
 # production
@@ -47,3 +48,8 @@ next-env.d.ts
 /test.db
 /test.db-journal
 /prisma/test.db*
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/

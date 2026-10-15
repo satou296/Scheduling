@@ -2,10 +2,12 @@ import type { Event, EventMember, Origin, Slot, User } from "@prisma/client";
 import { getBusy, insertEvent } from "./calendar";
 import { prisma } from "./db";
 import { decide, earliestSlot, isFree, summarize, travelWindow } from "./judge";
-import { sendMail } from "./mail";
+import { googleCalendarAddUrl, icsAttachment } from "./ics";
+import { sendMail, type MailAttachment } from "./mail";
 import { getTravelMinutes } from "./routes";
 import { isTravelMode } from "./routes/types";
 import { addMinutes, formatDateTime, formatSlot } from "./time";
+import { scheduleWake } from "./timers";
 
 export const JUDGE_DELAY_MIN = 60;
 export const CHOICE_DEADLINE_HOURS = 24;
@@ -27,9 +29,29 @@ function eventUrl(eventId: string) {
   return `${process.env.APP_URL}/events/${eventId}`;
 }
 
-async function notify(user: User, subject: string, body: string) {
+async function notify(user: User, subject: string, body: string, attachments?: MailAttachment[]) {
   if (!user.notifyEmail) return;
-  await sendMail(user.email, subject, body);
+  await sendMail(user.email, subject, body, attachments);
+}
+
+/** 新しい調整ができたことを、主催者以外のグループメンバーに知らせる */
+export async function notifyNewEvent(eventId: string) {
+  const event = await loadEvent(eventId);
+  const slots = currentSlots(event)
+    .map((s) => `・${formatSlot(s.start, s.end)}`)
+    .join("\n");
+  for (const m of event.members) {
+    if (m.userId === event.organizerId) continue;
+    await notify(
+      m.user,
+      `【${event.title}】新しい調整が作成されました`,
+      `${event.organizer.name} さんが日程調整を始めました。\n集合場所：${event.meetingPlace}\n${slots}\n\n` +
+        (m.user.calendarLinked
+          ? "Googleカレンダーの空き状況から自動で判定します。操作は不要です。\n"
+          : `${formatDateTime(event.judgeAt)} までに、候補ごとに〇×を入力してください。\n`) +
+        eventUrl(event.id),
+    );
+  }
 }
 
 function defaultOrigin(user: User & { origins: Origin[] }): Origin | undefined {
@@ -157,6 +179,8 @@ export async function judgeEvent(eventId: string, now = new Date()) {
         where: { id: eventId },
         data: { status: "AWAITING_CHOICE", choiceDeadline: deadline },
       });
+      scheduleWake(deadline);
+      scheduleWake(addMinutes(deadline, -REMINDER_BEFORE_HOURS * 60));
       const list = slots
         .filter((s) => decision.slotIds.includes(s.id))
         .map((s) => `・${formatSlot(s.start, s.end)}`)
@@ -233,13 +257,25 @@ async function applyAttendance(
     where: { id: member.id },
     data: { attendance: "ATTENDING", calendarEventId },
   });
+  const calendarInput = {
+    id: event.id,
+    title: event.title,
+    location: event.meetingPlace,
+    description: eventUrl(event.id),
+    start: slot.start,
+    end: slot.end,
+  };
+  // カレンダー未連携（または書き込み失敗）のメンバーには、ワンタップで登録できるリンクと .ics を送る（F-20）
   await notify(
     member.user,
     `【${event.title}】予定が確定しました`,
     `${when}\n集合場所：${event.meetingPlace}\n` +
       (reason ? `${reason}\n` : "") +
-      (calendarEventId ? "Googleカレンダーに登録しました。\n" : "") +
+      (calendarEventId
+        ? "Googleカレンダーに登録しました。\n"
+        : `カレンダーに追加：${googleCalendarAddUrl(calendarInput)}\n（添付の .ics ファイルからも追加できます）\n`) +
       eventUrl(event.id),
+    calendarEventId ? undefined : [icsAttachment(calendarInput)],
   );
 }
 
@@ -313,6 +349,7 @@ export async function reproposeSlots(eventId: string, slots: { start: Date; end:
       },
     }),
   ]);
+  scheduleWake(addMinutes(now, JUDGE_DELAY_MIN));
   // カレンダー未連携の主催者は、新しい候補をすべて〇として初期登録（作成時と同じ扱い）
   if (organizer && !organizer.user.calendarLinked) {
     const created = await prisma.slot.findMany({ where: { eventId, round } });
@@ -372,5 +409,20 @@ export async function runDueJobs(now = new Date()) {
       `【${e.title}】枠の選択期限が近づいています`,
       `${formatDateTime(e.choiceDeadline!)} までに枠を選ばない場合、最も早い枠で自動的に確定します。\n${eventUrl(e.id)}/choose`,
     );
+  }
+}
+
+/** サーバー起動時に、未来の判定・選択期限・リマインドの時刻にタイマーを設定する */
+export async function scheduleAllPending() {
+  const events = await prisma.event.findMany({
+    where: { status: { in: ["COLLECTING", "AWAITING_CHOICE"] } },
+    select: { status: true, judgeAt: true, choiceDeadline: true, reminderSentAt: true },
+  });
+  for (const e of events) {
+    if (e.status === "COLLECTING") scheduleWake(e.judgeAt);
+    if (e.status === "AWAITING_CHOICE" && e.choiceDeadline) {
+      scheduleWake(e.choiceDeadline);
+      if (!e.reminderSentAt) scheduleWake(addMinutes(e.choiceDeadline, -REMINDER_BEFORE_HOURS * 60));
+    }
   }
 }

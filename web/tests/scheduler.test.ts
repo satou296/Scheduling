@@ -26,12 +26,20 @@ async function user(opts: { linked?: boolean; busy?: [string, string][] } = {}) 
 }
 
 async function event(organizerId: string, slots: [string, string][], memberIds: string[]) {
+  const group = await prisma.group.create({
+    data: {
+      name: "テストグループ",
+      ownerId: organizerId,
+      inviteToken: `tok${++seq}`,
+      members: { create: [organizerId, ...memberIds].map((userId) => ({ userId })) },
+    },
+  });
   return prisma.event.create({
     data: {
       title: "テスト",
       meetingPlace: "渋谷駅",
       organizerId,
-      inviteToken: `tok${++seq}`,
+      groupId: group.id,
       judgeAt: new Date(Date.now() - 1000),
       slots: { create: slots.map(([s, e]) => ({ start: t(s), end: t(e), round: 1 })) },
       members: {

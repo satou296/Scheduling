@@ -26,8 +26,35 @@ model User {
   createdAt      DateTime  @default(now())
 
   origins     Origin[]
-  memberships EventMember[]
-  organized   Event[]       @relation("organizer")
+  memberships  EventMember[]
+  organized    Event[]       @relation("organizer")
+  groupMembers GroupMember[]
+  ownedGroups  Group[]       @relation("groupOwner")
+}
+
+// 友人グループ（F-11, F-12）。招待リンクはグループごとに発行し、グループ内で何度でも調整を作れる
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  ownerId     String
+  inviteToken String   @unique
+  createdAt   DateTime @default(now())
+
+  owner   User          @relation("groupOwner", fields: [ownerId], references: [id])
+  members GroupMember[]
+  events  Event[]
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
 }
 
 model Origin {
@@ -42,10 +69,10 @@ model Origin {
 
 model Event {
   id             String    @id @default(cuid())
+  groupId        String
   organizerId    String
   title          String
   meetingPlace   String
-  inviteToken    String    @unique
   // COLLECTING | AWAITING_CHOICE | AWAITING_FALLBACK | CONFIRMED | CANCELLED
   status         String    @default("COLLECTING")
   round          Int       @default(1)
@@ -59,6 +86,7 @@ model Event {
   travelUncomputed Boolean @default(false)
   createdAt      DateTime  @default(now())
 
+  group     Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
   organizer User          @relation("organizer", fields: [organizerId], references: [id])
   members   EventMember[]
   slots     Slot[]

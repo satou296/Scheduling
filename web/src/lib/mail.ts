@@ -11,13 +11,23 @@ function transporter() {
   });
 }
 
+/** SMTP の接続・認証を確認する。未設定なら null */
+export async function verifySmtp(): Promise<boolean | null> {
+  const t = transporter();
+  if (!t) return null;
+  await t.verify();
+  return true;
+}
+
+export type MailAttachment = { filename: string; content: string; contentType: string };
+
 /** メール送信。SMTP未設定時はコンソールに出力し、/dev/mails で確認できるよう記録する */
-export async function sendMail(to: string, subject: string, body: string) {
+export async function sendMail(to: string, subject: string, body: string, attachments?: MailAttachment[]) {
   const t = transporter();
   let sent = false;
   if (t) {
     try {
-      await t.sendMail({ from: process.env.MAIL_FROM, to, subject, text: body });
+      await t.sendMail({ from: process.env.MAIL_FROM, to, subject, text: body, attachments });
       sent = true;
     } catch (e) {
       console.error("sendMail failed", e);
@@ -25,7 +35,8 @@ export async function sendMail(to: string, subject: string, body: string) {
   } else {
     console.log(`[mail] to=${to} subject=${subject}\n${body}`);
   }
-  await prisma.mailLog.create({ data: { to, subject, body, sent } });
+  const names = attachments?.map((a) => a.filename).join(", ");
+  await prisma.mailLog.create({ data: { to, subject, body: names ? `${body}\n\n[添付] ${names}` : body, sent } });
 }
 
 export async function sendDeveloperAlert(subject: string, body: string) {

@@ -6,6 +6,7 @@ export async function loadEventView(eventId: string, userId: string) {
     where: { id: eventId },
     include: {
       organizer: true,
+      group: true,
       slots: true,
       members: {
         include: { user: true, results: true, answers: true },

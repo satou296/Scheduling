@@ -2,15 +2,18 @@ import type { RouteProvider, RouteQuery, RouteResult } from "./types";
 
 /**
  * NAVITIME Route(totalnavi) via RapidAPI（電車・バス）。
- * 住所は NAVITIME Geocoding で座標に変換してから経路検索する。
- * ※ 契約プランによりエンドポイント・パラメータが異なる可能性があるため、APIキー取得後に要動作確認。
+ * 住所は NAVITIME Geocoding（/address?word=）で座標に変換してから経路検索する。
+ * パラメータ・レスポンスは公式仕様（api-sdk.navitime.co.jp）で確認済み：
+ *   /route_transit：start・goal は「緯度,経度」、goal_time / start_time は YYYY-MM-DDThh:mm:ss、
+ *   総移動時間は items[].summary.move.time（分）／ /address：items[].coord.lat, lon
+ * RapidAPI のホスト名は購読画面の値を環境変数で設定する。
  */
 export class NavitimeTransitProvider implements RouteProvider {
   readonly name = "navitime";
   constructor(
     private apiKey: string,
     private routeHost: string,
-    private geocodingHost = "navitime-geocoding.p.rapidapi.com",
+    private geocodingHost: string,
   ) {}
 
   private headers(host: string) {

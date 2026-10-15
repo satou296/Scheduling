@@ -14,6 +14,11 @@ export default async function HomePage() {
     include: { event: { include: { slots: true, members: true } } },
     orderBy: { joinedAt: "desc" },
   });
+  const groups = await prisma.group.findMany({
+    where: { members: { some: { userId: user.id } } },
+    include: { _count: { select: { members: true } } },
+    orderBy: { createdAt: "desc" },
+  });
   const active = memberships.filter((m) => m.event.status !== "CONFIRMED" && m.event.status !== "CANCELLED");
   const confirmed = memberships
     .filter((m) => m.event.status === "CONFIRMED")
@@ -50,6 +55,28 @@ export default async function HomePage() {
             </Link>
           );
         })}
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-muted">グループ</h2>
+          <Link href="/groups/new" className="text-sm text-primary">
+            ＋ グループを作成
+          </Link>
+        </div>
+        {groups.length === 0 && (
+          <p className="card text-sm text-muted">
+            グループはまだありません。グループを作って招待リンクを送るか、受け取った招待リンクから参加してください。
+          </p>
+        )}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {groups.map((g) => (
+            <Link key={g.id} href={`/groups/${g.id}`} className="card block hover:border-primary">
+              <p className="font-semibold">{g.name}</p>
+              <p className="mt-1 text-xs text-muted">メンバー{g._count.members}人</p>
+            </Link>
+          ))}
+        </div>
       </section>
 
       <section className="space-y-2">
