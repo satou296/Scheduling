@@ -6,8 +6,11 @@ import { CopyButton } from "@/components/CopyButton";
 import { ResultsTable } from "@/components/ResultsTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmitButton } from "@/components/SubmitButton";
+import { prisma } from "@/lib/db";
 import { loadEventView } from "@/lib/event-view";
-import { TRAVEL_UNCOMPUTED_NOTICE } from "@/lib/scheduler";
+import { inviteUrl as groupInviteUrl } from "@/lib/groups";
+import { googleCalendarAddUrl } from "@/lib/ics";
+import { TRAVEL_UNCOMPUTED_NOTICE, judgeEvent } from "@/lib/scheduler";
 import { requireUser } from "@/lib/session";
 import { formatDateTime, formatSlot } from "@/lib/time";
 
@@ -15,10 +18,15 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const { id } = await params;
   const sp = await searchParams;
   const user = await requireUser(`/events/${id}`);
+  // 判定時刻を過ぎていれば、表示する前にその場で判定する（判定の速さ）
+  const pending = await prisma.event.findUnique({ where: { id }, select: { status: true, judgeAt: true } });
+  if (pending?.status === "COLLECTING" && pending.judgeAt <= new Date()) {
+    await judgeEvent(id).catch((e) => console.error("judgeEvent (on view) failed", e));
+  }
   const view = await loadEventView(id, user.id);
   if (!view) notFound();
   const { event, me, isOrganizer, slots, members, confirmedSlot } = view;
-  const inviteUrl = `${process.env.APP_URL}/invite/${event.inviteToken}`;
+  const inviteUrl = groupInviteUrl(event.group.inviteToken);
   const collecting = event.status === "COLLECTING";
   const awaiting = event.status === "AWAITING_CHOICE" || event.status === "AWAITING_FALLBACK";
   const myResults = view.members.find((m) => m.id === me.id)?.results ?? [];
@@ -31,7 +39,12 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           <StatusBadge status={event.status} />
         </div>
         <p className="text-sm">集合場所：{event.meetingPlace}</p>
-        <p className="text-xs text-muted">主催：{event.organizer.name}</p>
+        <p className="text-xs text-muted">
+          <Link href={`/groups/${event.groupId}`} className="underline">
+            {event.group.name}
+          </Link>
+          ・主催：{event.organizer.name}
+        </p>
       </div>
 
       {sp.created && (
@@ -42,7 +55,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
 
       {event.status !== "CONFIRMED" && (
         <section className="card space-y-2">
-          <h2 className="font-semibold">招待リンク</h2>
+          <h2 className="font-semibold">グループの招待リンク</h2>
           <div className="flex gap-2">
             <input readOnly value={inviteUrl} className="input font-mono text-xs" />
             <CopyButton text={inviteUrl} />
@@ -66,6 +79,28 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           </ul>
           {me.attendance === "ATTENDING" && me.calendarEventId && (
             <p className="text-xs text-muted">あなたのGoogleカレンダーに登録済みです。</p>
+          )}
+          {me.attendance === "ATTENDING" && !me.calendarEventId && (
+            <div className="flex flex-wrap gap-2">
+              <a
+                className="btn-secondary"
+                target="_blank"
+                rel="noopener noreferrer"
+                href={googleCalendarAddUrl({
+                  id: event.id,
+                  title: event.title,
+                  location: event.meetingPlace,
+                  description: `${process.env.APP_URL}/events/${event.id}`,
+                  start: confirmedSlot.start,
+                  end: confirmedSlot.end,
+                })}
+              >
+                Googleカレンダーに追加
+              </a>
+              <a className="btn-secondary" href={`/events/${event.id}/ics`}>
+                .ics をダウンロード
+              </a>
+            </div>
           )}
         </section>
       )}

@@ -48,6 +48,7 @@ npm run lint
 npx next typegen && npx tsc --noEmit
 npm test
 npm run build
+npm run test:e2e   # UI・画面遷移を変更したとき（Safari/Chrome/Firefox、スマホ表示含む）
 ```
 
 - `.env`（秘密鍵入り）、`prisma/*.db` は絶対にコミットしない（`.gitignore` 済み。`git status` で確認する）。
@@ -58,7 +59,8 @@ npm run build
 - **API の取得（Google Cloud の OAuth クライアント・Routes API キー、RapidAPI/NAVITIME の契約、SMTP など）は
   ユーザーが行う。** Claude はそれ以外（実装・テスト・ドキュメント）を担当する。
   必要な設定は `web/.env.example` と `web/README.md` の「API の準備」に追記して伝える。
-- NAVITIME 連携（`web/src/lib/routes/navitime.ts`）は推測で書いた未検証のコード。キー取得後に要動作確認。
+- 経路検索（Google Routes / NAVITIME / 駅すぱあと）のリクエスト・レスポンス形式は公式仕様で確認し、
+  `tests/route-providers.test.ts` でテスト済み。ただし実際の接続は未確認。キーが届いたら `npm run check:apis` で確認する。
 
 ## 開発環境
 
@@ -73,6 +75,14 @@ npm run dev              # http://localhost:3000
 - `DEV_LOGIN=true` で開発用ログイン（名前だけ）とモックカレンダー（設定画面で予定を登録）が使える。
   経路検索キー未設定時はモックの所要時間、SMTP 未設定時はメールをコンソール出力＋ `/dev/mails` に記録。
 - UI を変更したら、開発用ログインで実際に画面を操作して確認する（スマホ幅 390px とデスクトップの両方）。
+  通しの流れは `npm run test:e2e`（`e2e/flow.spec.ts`）に追加する。
+
+### テスト環境の注意
+- E2E はポート 3200・出力先 `.next-e2e`・DB `prisma/e2e.db` で起動するので、ユーザーが動かしている開発サーバー（3000）と並行できる。
+  ユーザーの開発サーバーは止めない。
+- E2E 用 DB の作り直しは Playwright の `webServer.command` の中で行う（`globalSetup` は Web サーバー起動後に動くため、
+  サーバーが古い DB ファイルをつかんだままになる）。
+- 開発用ログインは名前のハッシュでユーザーを識別する。E2E では名前にプロジェクト名を付けて、ブラウザ間で重複させない。
 
 ## 技術的な注意点（ハマりどころ）
 
@@ -104,6 +114,10 @@ npm run dev              # http://localhost:3000
   月 9,500 件で停止、7,600 件（80%）で開発者に通知。経路結果はキャッシュして使い回す。
 - 状態遷移：`COLLECTING → JUDGING → (CONFIRMED | AWAITING_CHOICE | AWAITING_FALLBACK)`。
   二重実行を防ぐため、状態の切り替えは `updateMany` で条件付きに行う（`web/src/lib/scheduler.ts`）。
+- グループ：招待リンクはグループごと。調整の参加者は作成時のグループメンバー。あとからグループに参加した人は
+  進行中の調整に「あとから参加」として加わる（`web/src/lib/groups.ts`）。
+- 判定・期限・リマインドは `scheduleWake()`（`web/src/lib/timers.ts`）で時刻ちょうどに実行する。
+  新しく期限を作る処理を追加したら `scheduleWake` も呼ぶ。
 
 ## コミュニケーション
 

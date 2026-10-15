@@ -1,18 +1,20 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { joinGroup, newInviteToken } from "@/lib/groups";
 import { isTravelMode } from "@/lib/routes/types";
 import {
   JUDGE_DELAY_MIN,
   allOkSlotIds,
   confirmEvent,
-  handleLateJoin,
   judgeEvent,
+  notifyNewEvent,
   reproposeSlots,
 } from "@/lib/scheduler";
+import { scheduleWake } from "@/lib/timers";
 import { devLoginEnabled, requireUser, safeNext, setSession } from "@/lib/session";
 import { addMinutes, parseJstDateTime, parseJstLocal } from "@/lib/time";
 
@@ -56,7 +58,8 @@ async function requireOrganizer(eventId: string) {
 export async function devLogin(form: FormData) {
   if (!devLoginEnabled()) throw new Error("開発用ログインは無効です");
   const name = str(form, "name") || "テストユーザー";
-  const email = `${Buffer.from(name).toString("hex").slice(0, 24)}@dev.local`;
+  // 名前全体のハッシュで識別する（同じ名前なら同じユーザー）
+  const email = `${createHash("sha256").update(name).digest("hex").slice(0, 20)}@dev.local`;
   const user = await prisma.user.upsert({
     where: { email },
     create: { email, name, isDevUser: true },
@@ -157,6 +160,31 @@ export async function deleteDevBusy(form: FormData) {
   revalidatePath("/settings");
 }
 
+// ---------- グループ ----------
+
+export async function createGroup(form: FormData) {
+  const user = await requireUser();
+  const name = str(form, "name");
+  if (!name) throw new Error("グループ名を入力してください");
+  const group = await prisma.group.create({
+    data: {
+      name,
+      ownerId: user.id,
+      inviteToken: newInviteToken(),
+      members: { create: { userId: user.id } },
+    },
+  });
+  redirect(`/groups/${group.id}?created=1`);
+}
+
+export async function joinGroupByInvite(token: string, form: FormData) {
+  const user = await requireUser(`/invite/${token}`);
+  const group = await prisma.group.findUnique({ where: { inviteToken: token } });
+  if (!group) throw new Error("招待リンクが無効です");
+  await joinGroup(group.id, user.id, (slotId) => form.get(`answer_${slotId}`) === "yes");
+  redirect(`/groups/${group.id}`);
+}
+
 // ---------- 調整 ----------
 
 export async function createEvent(form: FormData) {
@@ -167,24 +195,50 @@ export async function createEvent(form: FormData) {
   const slots = parseSlots(form);
   const now = new Date();
 
+  // 既存のグループを選ぶか、その場で新しいグループを作る（F-11）
+  let groupId = str(form, "groupId");
+  if (groupId) {
+    const membership = await prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: user.id } },
+    });
+    if (!membership) throw new Error("このグループのメンバーではありません");
+  } else {
+    const name = str(form, "groupName") || title;
+    const group = await prisma.group.create({
+      data: { name, ownerId: user.id, inviteToken: newInviteToken(), members: { create: { userId: user.id } } },
+    });
+    groupId = group.id;
+  }
+
+  // グループの現メンバー全員がこの調整の参加者になる
+  const groupMembers = await prisma.groupMember.findMany({ where: { groupId }, include: { user: true } });
   const event = await prisma.event.create({
     data: {
       title,
       meetingPlace,
+      groupId,
       organizerId: user.id,
-      inviteToken: randomBytes(12).toString("base64url"),
       judgeAt: addMinutes(now, JUDGE_DELAY_MIN),
       slots: { create: slots.map((s) => ({ ...s, round: 1 })) },
-      members: { create: { userId: user.id, role: "ORGANIZER", joinedAt: now } },
+      members: {
+        create: groupMembers.map((m) => ({
+          userId: m.userId,
+          role: m.userId === user.id ? "ORGANIZER" : "MEMBER",
+          joinedAt: now,
+        })),
+      },
     },
     include: { slots: true, members: true },
   });
   // カレンダー未連携の主催者は、自分で出した候補をすべて〇として初期登録（あとで変更可）
   if (!user.calendarLinked) {
+    const organizer = event.members.find((m) => m.userId === user.id)!;
     await prisma.manualAnswer.createMany({
-      data: event.slots.map((s) => ({ memberId: event.members[0].id, slotId: s.id, available: true })),
+      data: event.slots.map((s) => ({ memberId: organizer.id, slotId: s.id, available: true })),
     });
   }
+  scheduleWake(event.judgeAt);
+  await notifyNewEvent(event.id);
   redirect(`/events/${event.id}?created=1`);
 }
 
@@ -197,25 +251,6 @@ async function saveManualAnswers(memberId: string, slotIds: string[], form: Form
       update: { available },
     });
   }
-}
-
-export async function joinEvent(token: string, form: FormData) {
-  const user = await requireUser(`/invite/${token}`);
-  const event = await prisma.event.findUnique({ where: { inviteToken: token }, include: { slots: true } });
-  if (!event || event.status === "CANCELLED") throw new Error("招待リンクが無効です");
-
-  const existing = await prisma.eventMember.findUnique({
-    where: { eventId_userId: { eventId: event.id, userId: user.id } },
-  });
-  if (existing) redirect(`/events/${event.id}`);
-
-  const member = await prisma.eventMember.create({ data: { eventId: event.id, userId: user.id } });
-  if (!user.calendarLinked) {
-    const slotIds = event.slots.filter((s) => s.round === event.round).map((s) => s.id);
-    await saveManualAnswers(member.id, slotIds, form);
-  }
-  await handleLateJoin(event.id, member.id);
-  redirect(`/events/${event.id}`);
 }
 
 export async function saveAnswers(eventId: string, form: FormData) {

@@ -1,6 +1,7 @@
 import { prisma } from "../db";
 import { sendDeveloperAlert } from "../mail";
 import { monthKey, TZ } from "../time";
+import { EkispertTransitProvider } from "./ekispert";
 import { GoogleRoutesProvider } from "./google";
 import { MockRouteProvider } from "./mock";
 import { NavitimeTransitProvider } from "./navitime";
@@ -11,14 +12,30 @@ export const GOOGLE_MONTHLY_LIMIT = 9_500;
 export const GOOGLE_WARN_AT = 7_600;
 const CACHE_TTL_MS = 30 * 24 * 3600_000;
 
+/** 電車・バスのプロバイダ。TRANSIT_PROVIDER（navitime | ekispert）で選び、未指定ならキーのある方を使う */
+type Env = Record<string, string | undefined>;
+
+export function transitProvider(env: Env = process.env): RouteProvider {
+  const navitime =
+    env.RAPIDAPI_KEY && env.RAPIDAPI_NAVITIME_HOST
+      ? new NavitimeTransitProvider(
+          env.RAPIDAPI_KEY,
+          env.RAPIDAPI_NAVITIME_HOST,
+          env.RAPIDAPI_NAVITIME_GEOCODING_HOST || "navitime-geocoding.p.rapidapi.com",
+        )
+      : null;
+  const ekispert = env.EKISPERT_API_KEY ? new EkispertTransitProvider(env.EKISPERT_API_KEY) : null;
+  if (env.TRANSIT_PROVIDER === "ekispert") return ekispert ?? new MockRouteProvider();
+  if (env.TRANSIT_PROVIDER === "navitime") return navitime ?? new MockRouteProvider();
+  return navitime ?? ekispert ?? new MockRouteProvider();
+}
+
+export function roadProvider(env: Env = process.env): RouteProvider {
+  return env.GOOGLE_ROUTES_API_KEY ? new GoogleRoutesProvider(env.GOOGLE_ROUTES_API_KEY) : new MockRouteProvider();
+}
+
 function providerFor(mode: RouteQuery["mode"]): RouteProvider {
-  if (mode === "TRANSIT") {
-    const key = process.env.RAPIDAPI_KEY;
-    const host = process.env.RAPIDAPI_NAVITIME_HOST;
-    return key && host ? new NavitimeTransitProvider(key, host) : new MockRouteProvider();
-  }
-  const key = process.env.GOOGLE_ROUTES_API_KEY;
-  return key ? new GoogleRoutesProvider(key) : new MockRouteProvider();
+  return mode === "TRANSIT" ? transitProvider() : roadProvider();
 }
 
 /** 同じ起点・集合場所・移動手段・方向・時間帯（平日/休日×時）の結果を使い回すためのキー */
