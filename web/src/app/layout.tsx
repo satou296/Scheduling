@@ -16,7 +16,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="ja" className="h-full antialiased">
       <body className="flex min-h-full flex-col">
         <header className="border-b border-border bg-surface">
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3">
             <Link href={user ? "/home" : "/login"} className="font-bold whitespace-nowrap">
               スケジュール調整
             </Link>

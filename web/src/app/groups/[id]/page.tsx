@@ -40,7 +40,7 @@ export default async function GroupPage({ params, searchParams }: PageProps<"/gr
         <h2 className="font-semibold">招待リンク</h2>
         <p className="text-xs text-muted">受け取った人はこのリンクからグループに参加します。</p>
         <div className="flex gap-2">
-          <input readOnly value={url} className="input font-mono text-xs" aria-label="招待リンク" />
+          <input readOnly value={url} className="input min-w-0 font-mono text-xs" aria-label="招待リンク" />
           <CopyButton text={url} />
         </div>
       </section>

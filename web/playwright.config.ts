@@ -12,7 +12,7 @@ export default defineConfig({
   workers: 1, // SQLite を共有するため直列に実行
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
-  use: { baseURL: BASE_URL, locale: "ja-JP", timezoneId: "Asia/Tokyo", trace: "retain-on-failure" },
+  use: { baseURL: BASE_URL, locale: "ja-JP", timezoneId: "Asia/Tokyo", trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "mobile-safari", use: { ...devices["iPhone 13"] } },
     { name: "mobile-chrome", use: { ...devices["Pixel 7"] } },

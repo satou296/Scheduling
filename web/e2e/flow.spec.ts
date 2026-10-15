@@ -41,7 +41,8 @@ async function fillSlot(page: Page, index: number, date: string, start: string, 
 
 test("調整の作成から確定、あとから参加まで", async ({ browser }, testInfo) => {
   const ctx = testInfo.project.use;
-  const suffix = testInfo.project.name;
+  // 再試行時も DB は共有なので、試行ごとに別のユーザー名にする
+  const suffix = `${testInfo.project.name}-${testInfo.retry}`;
 
   // 主催者：新しいグループで調整を作成
   const org = await newUser(browser, ctx, `主催-${suffix}`, { calendar: true });
@@ -117,7 +118,16 @@ test("調整の作成から確定、あとから参加まで", async ({ browser 
   await org.waitForURL(/\/events\/.+created=1/);
   await expect(org.getByText("メンバー（4人）")).toBeVisible();
 
-  // 横スクロールが発生していない（スマホ表示）
-  const overflow = await org.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
+  // 横スクロールが発生していない（スマホ表示）。失敗時ははみ出している要素を表示する
+  const { overflow, offenders } = await org.evaluate(() => {
+    const width = document.documentElement.clientWidth;
+    return {
+      overflow: document.documentElement.scrollWidth - width,
+      offenders: [...document.querySelectorAll("body *")]
+        .filter((el) => el.getBoundingClientRect().right > width + 0.5)
+        .slice(0, 5)
+        .map((el) => `${el.tagName.toLowerCase()}.${el.className} (right=${Math.round(el.getBoundingClientRect().right)})`),
+    };
+  });
+  expect(overflow, `画面幅からはみ出している要素: ${offenders.join(" / ")}`).toBeLessThanOrEqual(0);
 });

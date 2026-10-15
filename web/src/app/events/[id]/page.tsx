@@ -57,7 +57,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
         <section className="card space-y-2">
           <h2 className="font-semibold">グループの招待リンク</h2>
           <div className="flex gap-2">
-            <input readOnly value={inviteUrl} className="input font-mono text-xs" />
+            <input readOnly value={inviteUrl} className="input min-w-0 font-mono text-xs" />
             <CopyButton text={inviteUrl} />
           </div>
         </section>
