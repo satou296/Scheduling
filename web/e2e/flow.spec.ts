@@ -42,7 +42,14 @@ async function newUser(
 }
 
 async function fillSlot(page: Page, index: number, date: string, start: string, end: string) {
-  await page.locator('input[name="slot_date"]').nth(index).fill(date);
+  const [y, m, d] = date.split("-");
+  const year = page.getByRole("textbox", { name: "年" }).nth(index);
+  await year.click();
+  // 年4桁・月2桁で次の欄へ自動で移るので、欄を選び直さずに続けて打つだけで入力できる。
+  // 2つ目の候補は「候補を追加」で前の日付がコピーされているが、そのまま打てば上書きされる
+  await page.keyboard.type(`${y}${m}${d}`);
+  await expect(page.getByRole("textbox", { name: "日" }).nth(index)).toBeFocused();
+  await expect(page.locator('input[name="slot_date"]').nth(index)).toHaveValue(date);
   await page.locator('input[name="slot_start"]').nth(index).fill(start);
   await page.locator('input[name="slot_end"]').nth(index).fill(end);
 }
