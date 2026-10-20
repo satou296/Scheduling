@@ -116,6 +116,7 @@ npm run dev              # http://localhost:3000
 - Google Routes API は Essentials 区分のみ（`TRAFFIC_UNAWARE`、FieldMask は所要時間だけ）。
   月 9,500 件で停止、7,600 件（80%）で開発者に通知。経路結果はキャッシュして使い回す。
 - 状態遷移：`COLLECTING → JUDGING → (CONFIRMED | AWAITING_CHOICE | AWAITING_FALLBACK)`。
+  `AWAITING_FALLBACK` は決行で `CONFIRMED`、出し直しで `COLLECTING`、中止または対応期限（募集開始から2時間）切れで `CANCELLED`。
   二重実行を防ぐため、状態の切り替えは `updateMany` で条件付きに行う（`web/src/lib/scheduler.ts`）。
 - グループ：招待リンクはグループごと。調整の参加者は作成時のグループメンバー。あとからグループに参加した人は
   進行中の調整に「あとから参加」として加わる（`web/src/lib/groups.ts`）。

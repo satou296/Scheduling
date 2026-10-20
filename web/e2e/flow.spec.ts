@@ -143,3 +143,44 @@ test("調整の作成から確定、あとから参加まで", async ({ browser 
   });
   expect(overflow, `画面幅からはみ出している要素: ${offenders.join(" / ")}`).toBeLessThanOrEqual(0);
 });
+
+test("全員不可のとき、主催者が中止を選ぶとメンバーにも中止と表示される", async ({ browser }, testInfo) => {
+  const ctx = testInfo.project.use;
+  const suffix = `${testInfo.project.name}-${testInfo.retry}`;
+
+  const org = await newUser(browser, ctx, `不可主催-${suffix}`, { calendar: true });
+  await org.goto("/events/new");
+  await org.locator('select[name="groupId"]').selectOption("");
+  await org.getByPlaceholder("例：大学の友達").fill(`不可-${suffix}`);
+  await org.getByPlaceholder("例：週末ボウリング").fill("映画");
+  await org.getByPlaceholder("例：渋谷駅 ハチ公前").fill("渋谷駅");
+  await fillSlot(org, 0, "2099-10-10", "13:00", "16:00");
+  await org.getByRole("button", { name: "作成する" }).click();
+  await org.waitForURL(/\/events\/.+created=1/);
+  const invitePath = new URL(await org.locator("input[readonly]").inputValue()).pathname;
+  const eventUrl = new URL(org.url()).pathname;
+
+  // 候補日に終日の予定があるメンバー
+  const busy = await newUser(browser, ctx, `不可メンバー-${suffix}`, { calendar: true, allDay: "2099-10-10" });
+  await busy.goto(invitePath);
+  await busy.getByRole("button", { name: "このグループに参加する" }).click();
+  await busy.waitForURL(/\/groups\//);
+
+  // 主催者：今すぐ判定 → 全員不可 → 期限つきで対応を選ぶ
+  await org.goto(eventUrl);
+  await org.getByRole("button", { name: "今すぐ判定" }).click();
+  await expect(org.getByText(/までに、決行・候補の出し直し・中止のどれかを選んでください/)).toBeVisible();
+
+  // メンバーにも全員不可と期限が表示される
+  await busy.goto(eventUrl);
+  await expect(busy.getByText(/までに選ばれない場合は中止になります/)).toBeVisible();
+
+  await org.getByRole("link", { name: "対応を選ぶ" }).click();
+  await org.waitForURL(/\/choose/);
+  await expect(org.getByText(/までに選ばない場合、この調整は中止になります/)).toBeVisible();
+  await org.getByRole("button", { name: "この調整を中止する" }).click();
+  await expect(org.getByText("この調整は中止になりました")).toBeVisible();
+
+  await busy.reload();
+  await expect(busy.getByText("この調整は中止になりました")).toBeVisible();
+});

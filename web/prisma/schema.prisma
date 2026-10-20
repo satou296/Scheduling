@@ -76,8 +76,11 @@ model Event {
   // COLLECTING | AWAITING_CHOICE | AWAITING_FALLBACK | CONFIRMED | CANCELLED
   status         String    @default("COLLECTING")
   round          Int       @default(1)
+  // 募集を始めた時刻（作成時、候補を出し直したときに更新）。全員不可時の対応期限の起点
+  collectingSince DateTime @default(now())
   judgeAt        DateTime
   judgedAt       DateTime?
+  // 主催者の選択期限（AWAITING_CHOICE）／全員不可時の対応期限（AWAITING_FALLBACK）
   choiceDeadline DateTime?
   reminderSentAt DateTime?
   confirmedSlotId String?

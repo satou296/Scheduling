@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { chooseSlot, repropose } from "@/app/actions";
+import { cancelByOrganizer, chooseSlot, repropose } from "@/app/actions";
 import { ResultsTable } from "@/components/ResultsTable";
 import { SlotEditor } from "@/components/SlotEditor";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -66,7 +66,10 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold">全員が参加できる枠がありませんでした</h1>
-        <p className="mt-1 text-sm text-muted">参加できる人が多い枠で決行するか、候補を出し直してください。</p>
+        <p className="mt-1 text-sm text-muted">
+          参加できる人が多い枠で決行するか、候補を出し直すか、中止してください。
+          {event.choiceDeadline && `${formatDateTime(event.choiceDeadline)} までに選ばない場合、この調整は中止になります。`}
+        </p>
       </div>
       <form action={choose} className="card space-y-3">
         <h2 className="font-semibold">この枠で決行する</h2>
@@ -90,6 +93,11 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
         <p className="text-sm text-muted">新しい候補で募集をやり直します（1時間後に再判定）。</p>
         <SlotEditor />
         <SubmitButton className="btn-secondary">候補を出し直す</SubmitButton>
+      </form>
+      <form action={cancelByOrganizer.bind(null, id)} className="card space-y-3">
+        <h2 className="font-semibold">中止する</h2>
+        <p className="text-sm text-muted">今回の調整は中止します。メンバーにメールでお知らせします。</p>
+        <SubmitButton className="btn-danger">この調整を中止する</SubmitButton>
       </form>
       <section className="card space-y-2">
         <h2 className="font-semibold">判定結果</h2>

@@ -9,6 +9,7 @@ import { isTravelMode } from "@/lib/routes/types";
 import {
   JUDGE_DELAY_MIN,
   allOkSlotIds,
+  cancelEvent,
   confirmEvent,
   judgeEvent,
   notifyNewEvent,
@@ -297,5 +298,12 @@ export async function chooseSlot(eventId: string, form: FormData) {
 export async function repropose(eventId: string, form: FormData) {
   await requireOrganizer(eventId);
   await reproposeSlots(eventId, parseSlots(form));
+  redirect(`/events/${eventId}`);
+}
+
+export async function cancelByOrganizer(eventId: string) {
+  const { event } = await requireOrganizer(eventId);
+  if (event.status !== "AWAITING_FALLBACK") throw new Error("中止できる状態ではありません");
+  await cancelEvent(eventId, { auto: false });
   redirect(`/events/${eventId}`);
 }
