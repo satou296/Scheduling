@@ -12,6 +12,10 @@ import { scheduleWake } from "./timers";
 export const JUDGE_DELAY_MIN = 60;
 export const CHOICE_DEADLINE_HOURS = 24;
 export const REMINDER_BEFORE_HOURS = 3;
+// 全員不可時の対応期限：募集開始から2時間。過ぎたら中止する
+export const FALLBACK_DEADLINE_MIN = 120;
+// 判定が遅れた場合（サーバー停止など）でも、主催者が対応を選べる時間を判定から最低1時間は残す
+export const FALLBACK_MIN_REMAINING_MIN = 60;
 export const TRAVEL_UNCOMPUTED_NOTICE = "移動時間は未計算です。間に合うかは各自で確認してください";
 
 type MemberWithUser = EventMember & { user: User & { origins: Origin[] } };
@@ -192,7 +196,12 @@ export async function judgeEvent(eventId: string, now = new Date()) {
           `${formatDateTime(deadline)} までに選ばない場合、最も早い枠で自動的に確定します。\n${eventUrl(eventId)}/choose`,
       );
     } else {
-      await prisma.event.update({ where: { id: eventId }, data: { status: "AWAITING_FALLBACK" } });
+      const deadline = fallbackDeadline(event.collectingSince, now);
+      await prisma.event.update({
+        where: { id: eventId },
+        data: { status: "AWAITING_FALLBACK", choiceDeadline: deadline },
+      });
+      scheduleWake(deadline);
       const best = decision.ranked[0];
       const bestSlot = slots.find((s) => s.id === best?.slotId);
       await notify(
@@ -200,8 +209,19 @@ export async function judgeEvent(eventId: string, now = new Date()) {
         `【${event.title}】全員が参加できる枠がありませんでした`,
         (bestSlot
           ? `最も多く参加できるのは ${formatSlot(bestSlot.start, bestSlot.end)}（${best.availableCount}/${best.total}人）です。\n`
-          : "") + `この枠で決行するか、候補を出し直すかを選んでください。\n${eventUrl(eventId)}/choose`,
+          : "") +
+          `決行する・候補を出し直す・中止する、のどれかを選んでください。\n` +
+          `${formatDateTime(deadline)} までに選ばない場合、この調整は中止になります。\n${eventUrl(eventId)}/choose`,
       );
+      for (const m of event.members) {
+        if (m.userId === event.organizerId) continue;
+        await notify(
+          m.user,
+          `【${event.title}】全員が参加できる枠がありませんでした`,
+          `主催者の ${event.organizer.name} さんが、決行・候補の出し直し・中止のどれかを選びます。\n` +
+            `${formatDateTime(deadline)} までに選ばれない場合、この調整は中止になります。\n${eventUrl(eventId)}`,
+        );
+      }
     }
 
     if (uncomputed.length > 0) await notifyTravelUncomputed(event, uncomputed);
@@ -209,6 +229,34 @@ export async function judgeEvent(eventId: string, now = new Date()) {
     // 失敗時は募集中に戻して次回の実行で再判定する
     await prisma.event.update({ where: { id: eventId }, data: { status: "COLLECTING" } });
     throw e;
+  }
+}
+
+/** 全員不可時の対応期限。募集開始から2時間後だが、判定から最低1時間は残す */
+export function fallbackDeadline(collectingSince: Date, judgedAt: Date): Date {
+  const deadline = addMinutes(collectingSince, FALLBACK_DEADLINE_MIN);
+  const floor = addMinutes(judgedAt, FALLBACK_MIN_REMAINING_MIN);
+  return deadline > floor ? deadline : floor;
+}
+
+/**
+ * 全員不可の調整を中止する（F-19）。主催者が選んだ場合（auto=false）と、対応期限を過ぎた場合（auto=true）がある。
+ * 主催者が自分で中止したときは、主催者には通知しない。
+ */
+export async function cancelEvent(eventId: string, { auto }: { auto: boolean }) {
+  const claimed = await prisma.event.updateMany({
+    where: { id: eventId, status: "AWAITING_FALLBACK" },
+    data: { status: "CANCELLED" },
+  });
+  if (claimed.count === 0) return;
+
+  const event = await loadEvent(eventId);
+  const reason = auto
+    ? `全員が参加できる枠がなく、主催者の対応期限（${formatDateTime(event.choiceDeadline!)}）を過ぎたため、この調整は中止になりました。`
+    : `全員が参加できる枠がなかったため、主催者の ${event.organizer.name} さんがこの調整を中止しました。`;
+  for (const m of event.members) {
+    if (!auto && m.userId === event.organizerId) continue;
+    await notify(m.user, `【${event.title}】調整は中止になりました`, `${reason}\n${eventUrl(eventId)}`);
   }
 }
 
@@ -334,21 +382,24 @@ export async function reproposeSlots(eventId: string, slots: { start: Date; end:
   if (event.status !== "AWAITING_FALLBACK") throw new Error("候補を出し直せる状態ではありません");
   const round = event.round + 1;
   const organizer = event.members.find((m) => m.userId === event.organizerId);
-  await prisma.$transaction([
-    prisma.slot.createMany({ data: slots.map((s) => ({ ...s, eventId, round })) }),
-    prisma.event.update({
-      where: { id: eventId },
+  // 対応期限切れの中止と競合しないよう、対応待ちの間だけ切り替える
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.event.updateMany({
+      where: { id: eventId, status: "AWAITING_FALLBACK" },
       data: {
         round,
         status: "COLLECTING",
+        collectingSince: now,
         judgeAt: addMinutes(now, JUDGE_DELAY_MIN),
         judgedAt: null,
         choiceDeadline: null,
         reminderSentAt: null,
         travelUncomputed: false,
       },
-    }),
-  ]);
+    });
+    if (claimed.count === 0) throw new Error("候補を出し直せる状態ではありません");
+    await tx.slot.createMany({ data: slots.map((s) => ({ ...s, eventId, round })) });
+  });
   scheduleWake(addMinutes(now, JUDGE_DELAY_MIN));
   // カレンダー未連携の主催者は、新しい候補をすべて〇として初期登録（作成時と同じ扱い）
   if (organizer && !organizer.user.calendarLinked) {
@@ -394,6 +445,12 @@ export async function runDueJobs(now = new Date()) {
     await confirmEvent(e.id, slot.id, "主催者の選択期限（24時間）を過ぎたため、最も早い枠で確定しました。");
   }
 
+  const abandoned = await prisma.event.findMany({
+    where: { status: "AWAITING_FALLBACK", choiceDeadline: { lte: now } },
+    select: { id: true },
+  });
+  for (const e of abandoned) await cancelEvent(e.id, { auto: true });
+
   const remind = await prisma.event.findMany({
     where: {
       status: "AWAITING_CHOICE",
@@ -415,11 +472,12 @@ export async function runDueJobs(now = new Date()) {
 /** サーバー起動時に、未来の判定・選択期限・リマインドの時刻にタイマーを設定する */
 export async function scheduleAllPending() {
   const events = await prisma.event.findMany({
-    where: { status: { in: ["COLLECTING", "AWAITING_CHOICE"] } },
+    where: { status: { in: ["COLLECTING", "AWAITING_CHOICE", "AWAITING_FALLBACK"] } },
     select: { status: true, judgeAt: true, choiceDeadline: true, reminderSentAt: true },
   });
   for (const e of events) {
     if (e.status === "COLLECTING") scheduleWake(e.judgeAt);
+    if (e.status === "AWAITING_FALLBACK" && e.choiceDeadline) scheduleWake(e.choiceDeadline);
     if (e.status === "AWAITING_CHOICE" && e.choiceDeadline) {
       scheduleWake(e.choiceDeadline);
       if (!e.reminderSentAt) scheduleWake(addMinutes(e.choiceDeadline, -REMINDER_BEFORE_HOURS * 60));

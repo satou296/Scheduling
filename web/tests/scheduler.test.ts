@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { GOOGLE_MONTHLY_LIMIT, GOOGLE_WARN_AT, cacheKey, reserveGoogleQuota } from "@/lib/routes";
-import { confirmEvent, handleLateJoin, judgeEvent, runDueJobs } from "@/lib/scheduler";
+import { cancelEvent, confirmEvent, handleLateJoin, judgeEvent, reproposeSlots, runDueJobs } from "@/lib/scheduler";
 import { monthKey } from "@/lib/time";
 
 const t = (s: string) => new Date(`${s}:00+09:00`);
+const min = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
 let seq = 0;
 
 async function user(opts: { linked?: boolean; busy?: [string, string][] } = {}) {
@@ -100,6 +101,78 @@ describe("judgeEvent", () => {
     const members = await prisma.eventMember.findMany({ where: { eventId: e.id } });
     expect(members.find((m) => m.userId === a.id)?.attendance).toBe("NOT_ATTENDING");
     expect(members.find((m) => m.userId === org.id)?.attendance).toBe("ATTENDING");
+  });
+
+  it("全員不可なら主催者とメンバーに通知し、募集開始から2時間で中止", async () => {
+    const org = await user();
+    const a = await user({ busy: [["2026-11-10T00:00", "2026-11-10T23:59"]] });
+    const e = await event(org.id, [["2026-11-10T10:00", "2026-11-10T12:00"]], [a.id]);
+    const start = e.collectingSince;
+    await judgeEvent(e.id, min(start, 60));
+    let after = await prisma.event.findUniqueOrThrow({ where: { id: e.id } });
+    expect(after.status).toBe("AWAITING_FALLBACK");
+    expect(after.choiceDeadline).toEqual(min(start, 120));
+    for (const u of [org, a]) {
+      expect(await prisma.mailLog.count({ where: { to: u.email, subject: { contains: "全員が参加できる枠がありませんでした" } } })).toBe(1);
+    }
+
+    await runDueJobs(min(start, 119));
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: e.id } })).status).toBe("AWAITING_FALLBACK");
+
+    await runDueJobs(min(start, 120));
+    after = await prisma.event.findUniqueOrThrow({ where: { id: e.id } });
+    expect(after.status).toBe("CANCELLED");
+    for (const u of [org, a]) {
+      expect(await prisma.mailLog.count({ where: { to: u.email, subject: { contains: "中止" } } })).toBe(1);
+    }
+    // 中止後は決行できない
+    await confirmEvent(e.id, e.slots[0].id);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: e.id } })).status).toBe("CANCELLED");
+  });
+
+  it("全員不可の対応期限は、今すぐ判定でも募集開始から2時間。判定が遅れたときは判定から1時間", async () => {
+    const org = await user();
+    const a = await user({ busy: [["2026-11-11T00:00", "2026-11-11T23:59"]] });
+    const early = await event(org.id, [["2026-11-11T10:00", "2026-11-11T12:00"]], [a.id]);
+    await judgeEvent(early.id, min(early.collectingSince, 5));
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: early.id } })).choiceDeadline).toEqual(
+      min(early.collectingSince, 120),
+    );
+
+    const late = await event(org.id, [["2026-11-11T10:00", "2026-11-11T12:00"]], [a.id]);
+    const judgedAt = min(late.collectingSince, 180);
+    await judgeEvent(late.id, judgedAt);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: late.id } })).choiceDeadline).toEqual(min(judgedAt, 60));
+  });
+
+  it("主催者が中止すると、主催者以外のメンバーに通知する", async () => {
+    const org = await user();
+    const a = await user({ busy: [["2026-11-12T00:00", "2026-11-12T23:59"]] });
+    const e = await event(org.id, [["2026-11-12T10:00", "2026-11-12T12:00"]], [a.id]);
+    await judgeEvent(e.id, min(e.collectingSince, 60));
+    await cancelEvent(e.id, { auto: false });
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: e.id } })).status).toBe("CANCELLED");
+    expect(await prisma.mailLog.count({ where: { to: a.email, subject: { contains: "中止" } } })).toBe(1);
+    expect(await prisma.mailLog.count({ where: { to: org.email, subject: { contains: "中止" } } })).toBe(0);
+  });
+
+  it("候補を出し直すと募集開始と対応期限をリセットし、中止の対象から外れる", async () => {
+    const org = await user();
+    const a = await user({ busy: [["2026-11-13T00:00", "2026-11-13T23:59"]] });
+    const e = await event(org.id, [["2026-11-13T10:00", "2026-11-13T12:00"]], [a.id]);
+    await judgeEvent(e.id, min(e.collectingSince, 60));
+    const now = min(e.collectingSince, 90);
+    await reproposeSlots(e.id, [{ start: t("2026-11-14T10:00"), end: t("2026-11-14T12:00") }], now);
+    const after = await prisma.event.findUniqueOrThrow({ where: { id: e.id } });
+    expect(after.status).toBe("COLLECTING");
+    expect(after.round).toBe(2);
+    expect(after.collectingSince).toEqual(now);
+    expect(after.choiceDeadline).toBeNull();
+    // 元の期限を過ぎても中止されない（再判定の時刻より前）
+    await runDueJobs(min(e.collectingSince, 121));
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: e.id } })).status).toBe("COLLECTING");
+    // 対応待ちでなくなったので、もう一度出し直すことはできない
+    await expect(reproposeSlots(e.id, [{ start: t("2026-11-15T10:00"), end: t("2026-11-15T12:00") }], now)).rejects.toThrow();
   });
 
   it("終日の予定がある日は不可", async () => {

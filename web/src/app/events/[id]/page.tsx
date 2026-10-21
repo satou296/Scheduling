@@ -29,6 +29,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const inviteUrl = groupInviteUrl(event.group.inviteToken);
   const collecting = event.status === "COLLECTING";
   const awaiting = event.status === "AWAITING_CHOICE" || event.status === "AWAITING_FALLBACK";
+  const deadline = event.choiceDeadline ? formatDateTime(event.choiceDeadline) : "";
   const myResults = view.members.find((m) => m.id === me.id)?.results ?? [];
 
   return (
@@ -53,7 +54,14 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
         </p>
       )}
 
-      {event.status !== "CONFIRMED" && (
+      {event.status === "CANCELLED" && (
+        <section className="card space-y-1 border-ng">
+          <h2 className="font-semibold text-ng">この調整は中止になりました</h2>
+          <p className="text-sm text-muted">全員が参加できる枠がなかったため、中止しました。</p>
+        </section>
+      )}
+
+      {event.status !== "CONFIRMED" && event.status !== "CANCELLED" && (
         <section className="card space-y-2">
           <h2 className="font-semibold">グループの招待リンク</h2>
           <div className="flex gap-2">
@@ -111,15 +119,20 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <>
               <p className="text-sm font-semibold text-warn">
                 {event.status === "AWAITING_CHOICE"
-                  ? `全員が参加できる枠が複数あります。${event.choiceDeadline ? formatDateTime(event.choiceDeadline) : ""} までに選んでください。`
-                  : "全員が参加できる枠がありませんでした。決行するか、候補を出し直すかを選んでください。"}
+                  ? `全員が参加できる枠が複数あります。${deadline} までに選んでください。`
+                  : `全員が参加できる枠がありませんでした。${deadline} までに、決行・候補の出し直し・中止のどれかを選んでください（選ばない場合は中止）。`}
               </p>
               <Link href={`/events/${event.id}/choose`} className="btn-primary">
-                枠を選ぶ
+                {event.status === "AWAITING_CHOICE" ? "枠を選ぶ" : "対応を選ぶ"}
               </Link>
             </>
-          ) : (
+          ) : event.status === "AWAITING_CHOICE" ? (
             <p className="text-sm">主催者が枠を選んでいます。確定したらメールでお知らせします。</p>
+          ) : (
+            <p className="text-sm">
+              全員が参加できる枠がありませんでした。主催者が、決行・候補の出し直し・中止のどれかを選んでいます。
+              {deadline} までに選ばれない場合は中止になります。
+            </p>
           )}
         </section>
       )}

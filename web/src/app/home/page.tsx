@@ -51,7 +51,12 @@ export default async function HomePage() {
                 {e.slots.filter((s) => s.round === e.round).length}件
                 {e.status === "COLLECTING" && ` ・ ${formatDateTime(e.judgeAt)} に判定`}
               </p>
-              {needsAction && <p className="mt-2 text-sm font-semibold text-warn">枠を選んでください →</p>}
+              {needsAction && (
+                <p className="mt-2 text-sm font-semibold text-warn">
+                  {e.status === "AWAITING_CHOICE" ? "枠を選んでください" : "決行・出し直し・中止を選んでください"}
+                  {e.choiceDeadline && `（${formatDateTime(e.choiceDeadline)} まで）`} →
+                </p>
+              )}
             </Link>
           );
         })}
