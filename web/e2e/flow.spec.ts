@@ -184,3 +184,31 @@ test("全員不可のとき、主催者が中止を選ぶとメンバーにも�
   await busy.reload();
   await expect(busy.getByText("この調整は中止になりました")).toBeVisible();
 });
+
+test("ログインしていなくても、トップページとプライバシーポリシーを見られる", async ({ browser }, testInfo) => {
+  const page = await (await browser.newContext(testInfo.project.use)).newPage();
+
+  // トップページ：アプリの説明と、プライバシーポリシーへのリンク（Google の審査の要件）
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "調整しよう", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "使い方" })).toBeVisible();
+  await page.getByRole("main").getByRole("link", { name: "プライバシーポリシー" }).click();
+
+  await expect(page).toHaveURL(/\/privacy$/);
+  await expect(page.getByRole("heading", { name: "プライバシーポリシー", level: 1 })).toBeVisible();
+  await expect(page.getByText("読み取らないもの：予定のタイトル・説明・場所・参加者")).toBeVisible();
+  await expect(page.getByText("Limited Use requirements", { exact: false })).toBeVisible();
+  // E2E では運営者の環境変数を設定していないので、未設定の警告が出る
+  // Next.js のページ遷移の読み上げ用の要素も role="alert" なので、本文の中に絞る
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("OPERATOR_NAME");
+
+  // どのページにもフッターからプライバシーポリシーへ行ける
+  await page.goto("/login");
+  await expect(page.getByRole("contentinfo").getByRole("link", { name: "プライバシーポリシー" })).toBeVisible();
+
+  // 横スクロールが発生していない（スマホ表示）
+  await page.goto("/privacy");
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});

@@ -5,6 +5,7 @@ import { decide, earliestSlot, isFree, summarize, travelWindow } from "./judge";
 import { googleCalendarAddUrl, icsAttachment } from "./ics";
 import { sendMail, type MailAttachment } from "./mail";
 import { getTravelMinutes } from "./routes";
+import { APP_NAME } from "./site";
 import { isTravelMode } from "./routes/types";
 import { addMinutes, formatDateTime, formatSlot } from "./time";
 import { scheduleWake } from "./timers";
@@ -297,7 +298,7 @@ async function applyAttendance(
   const calendarEventId = await insertEvent(member.userId, {
     title: event.title,
     location: event.meetingPlace,
-    description: `スケジュール調整アプリで確定した予定です。\n${eventUrl(event.id)}`,
+    description: `${APP_NAME}で確定した予定です。\n${eventUrl(event.id)}`,
     start: slot.start,
     end: slot.end,
   });

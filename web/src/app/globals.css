@@ -14,6 +14,10 @@
   --ng-bg: #fbeaea;
   --warn: #9a6100;
   --warn-bg: #fff5df;
+  /* 「Google でログイン」ボタンの色（Google のブランドガイドラインの Light / Dark テーマの値） */
+  --google-fill: #ffffff;
+  --google-stroke: #747775;
+  --google-text: #1f1f1f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -31,6 +35,9 @@
     --ng-bg: #3a1c1c;
     --warn: #f0c060;
     --warn-bg: #352a12;
+    --google-fill: #131314;
+    --google-stroke: #8e918f;
+    --google-text: #e3e3e3;
   }
 }
 
@@ -74,6 +81,22 @@ body {
 
 @utility btn-danger {
   @apply btn border border-border bg-surface text-ng hover:bg-ng-bg;
+}
+
+/* 余白はガイドラインの値（G の前 12px・G の後 10px・文字の後 12px）、文字は 14/20 */
+@utility btn-google {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--google-stroke);
+  border-radius: 9999px;
+  background: var(--google-fill);
+  color: var(--google-text);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 @utility input {
