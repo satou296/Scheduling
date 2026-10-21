@@ -36,6 +36,8 @@ export default defineConfig({
       RAPIDAPI_KEY: "",
       EKISPERT_API_KEY: "",
       SMTP_HOST: "",
+      OPERATOR_NAME: "",
+      SUPPORT_EMAIL: "",
     },
   },
 });

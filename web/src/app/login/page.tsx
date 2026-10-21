@@ -1,9 +1,14 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { devLogin } from "@/app/actions";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { googleConfigured } from "@/lib/google-oauth";
 import { devLoginEnabled, getCurrentUser, safeNext } from "@/lib/session";
 import { SESSION_SECRET_FIX, sessionSecretProblem } from "@/lib/session-secret";
+import { APP_NAME } from "@/lib/site";
+
+export const metadata = { title: "ログイン" };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
@@ -14,7 +19,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   if (secretProblem) {
     return (
       <div className="mx-auto max-w-sm space-y-6 pt-8">
-        <h1 className="text-center text-2xl font-bold">スケジュール調整</h1>
+        <h1 className="text-center text-2xl font-bold">{APP_NAME}</h1>
         <div className="notice-warn space-y-2" role="alert">
           <p className="font-semibold">サーバーの設定が完了していないため、ログインできません。</p>
           <p>{secretProblem}</p>
@@ -29,7 +34,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
     <div className="mx-auto max-w-sm space-y-6 pt-8">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">スケジュール調整</h1>
+        <h1 className="text-2xl font-bold">{APP_NAME}</h1>
         <p className="mt-2 text-sm text-muted">候補を入れるだけで、みんなの予定を自動で決めます。</p>
       </div>
 
@@ -37,9 +42,18 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
       <div className="card space-y-3">
         {googleConfigured() ? (
-          <a href={`/api/auth/google/start?next=${encodeURIComponent(next)}`} className="btn-primary w-full">
-            Googleアカウントでログイン
-          </a>
+          <div className="flex flex-col items-center gap-3">
+            <GoogleSignInButton href={`/api/auth/google/start?next=${encodeURIComponent(next)}`} />
+            <p className="text-center text-xs text-muted">
+              ログインでは名前・メールアドレス・プロフィール画像だけを受け取ります。
+              <br />
+              データの扱いは
+              <Link href="/privacy" className="underline">
+                プライバシーポリシー
+              </Link>
+              をご確認ください。
+            </p>
+          </div>
         ) : (
           <p className="text-sm text-muted">
             Googleログインは未設定です（GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET）。
