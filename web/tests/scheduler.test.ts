@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { OAuth2Client } from "google-auth-library";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { isInvalidGrant } from "@/lib/google-oauth";
 import { GOOGLE_MONTHLY_LIMIT, GOOGLE_WARN_AT, cacheKey, reserveGoogleQuota } from "@/lib/routes";
 import { cancelEvent, confirmEvent, handleLateJoin, judgeEvent, reproposeSlots, runDueJobs } from "@/lib/scheduler";
 import { monthKey } from "@/lib/time";
@@ -203,6 +205,100 @@ describe("judgeEvent", () => {
     await judgeEvent(e.id);
     const after = await prisma.event.findUniqueOrThrow({ where: { id: e.id } });
     expect(after.confirmedSlotId).toBe(e.slots[0].id);
+  });
+});
+
+// Google で連携したユーザー（モックカレンダーではない）。トークンの更新は各テストでモックする
+async function googleUser() {
+  return prisma.user.create({
+    data: {
+      email: `g${++seq}@example.com`,
+      name: `google${seq}`,
+      calendarLinked: true,
+      refreshToken: "refresh-token",
+      onboarded: true,
+      origins: { create: { label: "自宅", address: "渋谷駅", isDefault: true } },
+    },
+  });
+}
+
+const invalidGrant = () =>
+  Object.assign(new Error("invalid_grant"), {
+    response: { data: { error: "invalid_grant", error_description: "Token has been expired or revoked." } },
+  });
+
+function mockTokenRefresh(error: Error) {
+  // getAccessToken はオーバーロードがあるため、型を合わせずにモックする
+  vi.spyOn(OAuth2Client.prototype, "getAccessToken").mockRejectedValue(error as never);
+}
+
+describe("Googleカレンダーの連携が切れたとき", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("isInvalidGrant は権限が無効になったエラーだけを判別する", () => {
+    expect(isInvalidGrant(invalidGrant())).toBe(true);
+    expect(isInvalidGrant(new Error("getaddrinfo ENOTFOUND oauth2.googleapis.com"))).toBe(false);
+    expect(isInvalidGrant(undefined)).toBe(false);
+  });
+
+  it("判定は止まらず、その人は〇×の手入力で判定し、未連携に戻して知らせる", async () => {
+    mockTokenRefresh(invalidGrant());
+    const org = await user();
+    const broken = await googleUser();
+    const e = await event(org.id, [["2026-11-20T10:00", "2026-11-20T12:00"]], [broken.id]);
+    const member = await prisma.eventMember.findFirstOrThrow({ where: { eventId: e.id, userId: broken.id } });
+    await prisma.manualAnswer.create({ data: { memberId: member.id, slotId: e.slots[0].id, available: true } });
+
+    await judgeEvent(e.id);
+
+    const after = await prisma.event.findUniqueOrThrow({ where: { id: e.id } });
+    expect(after.status).toBe("CONFIRMED");
+    const result = await prisma.slotResult.findFirstOrThrow({ where: { memberId: member.id } });
+    expect(result.source).toBe("MANUAL");
+    const u = await prisma.user.findUniqueOrThrow({ where: { id: broken.id } });
+    expect(u.calendarLinked).toBe(false);
+    expect(u.refreshToken).toBeNull();
+    expect(await prisma.mailLog.count({ where: { to: broken.email, subject: "Googleカレンダーの連携が切れました" } })).toBe(1);
+    // カレンダーに書き込めないので、確定メールに .ics を付ける
+    const confirmed = await prisma.mailLog.findFirstOrThrow({ where: { to: broken.email, subject: { contains: "予定が確定しました" } } });
+    expect(confirmed.body).toContain("[添付]");
+    expect((await prisma.eventMember.findUniqueOrThrow({ where: { id: member.id } })).attendance).toBe("ATTENDING");
+  });
+
+  it("一時的なエラーでは連携を外さず、その回は〇×の手入力で判定する", async () => {
+    mockTokenRefresh(new Error("getaddrinfo ENOTFOUND oauth2.googleapis.com"));
+    const org = await user();
+    const flaky = await googleUser();
+    const e = await event(org.id, [["2026-11-21T10:00", "2026-11-21T12:00"]], [flaky.id]);
+
+    await judgeEvent(e.id);
+
+    // 〇×の入力がないので不可 → 全員不可の対応待ちに進む（募集中のまま止まらない）
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: e.id } })).status).toBe("AWAITING_FALLBACK");
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: flaky.id } })).calendarLinked).toBe(true);
+    expect(await prisma.mailLog.count({ where: { to: flaky.email, subject: "Googleカレンダーの連携が切れました" } })).toBe(0);
+  });
+
+  it("確定のときに書き込めない人がいても、後に続く参加者の出欠も記録する", async () => {
+    const org = await user();
+    const broken = await googleUser();
+    const a = await user();
+    const e = await event(org.id, [["2026-11-22T10:00", "2026-11-22T12:00"]], [broken.id, a.id]);
+    await prisma.event.update({ where: { id: e.id }, data: { status: "AWAITING_CHOICE" } });
+    const members = await prisma.eventMember.findMany({ where: { eventId: e.id } });
+    await prisma.slotResult.createMany({
+      data: members.map((m) => ({ slotId: e.slots[0].id, memberId: m.id, available: true, source: "MANUAL" })),
+    });
+    mockTokenRefresh(invalidGrant());
+
+    await confirmEvent(e.id, e.slots[0].id);
+
+    const after = await prisma.eventMember.findMany({ where: { eventId: e.id } });
+    expect(after.every((m) => m.attendance === "ATTENDING")).toBe(true);
+    expect(after.find((m) => m.userId === broken.id)?.calendarEventId).toBeNull();
+    expect(await prisma.devCalendarEvent.count({ where: { userId: a.id, title: "テスト" } })).toBe(1);
   });
 });
 

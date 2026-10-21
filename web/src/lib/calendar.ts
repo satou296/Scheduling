@@ -72,24 +72,30 @@ export async function getBusy(userId: string, timeMin: Date, timeMax: Date): Pro
   const items: CalendarItem[] = [];
   let calendarTimeZone = TZ;
   let pageToken: string | undefined;
-  do {
-    const url = new URL(`${API}/calendars/primary/events`);
-    url.searchParams.set("timeMin", timeMin.toISOString());
-    url.searchParams.set("timeMax", timeMax.toISOString());
-    url.searchParams.set("singleEvents", "true");
-    url.searchParams.set("maxResults", "2500");
-    url.searchParams.set("fields", EVENT_FIELDS);
-    if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) {
-      console.error("events.list failed", res.status, await res.text());
-      return null;
-    }
-    const data = (await res.json()) as { timeZone?: string; nextPageToken?: string; items?: CalendarItem[] };
-    if (data.timeZone) calendarTimeZone = data.timeZone;
-    items.push(...(data.items ?? []));
-    pageToken = data.nextPageToken;
-  } while (pageToken);
+  // 通信エラーでも例外は投げず null を返す（呼び出し元は〇×の手入力で判定を続ける）
+  try {
+    do {
+      const url = new URL(`${API}/calendars/primary/events`);
+      url.searchParams.set("timeMin", timeMin.toISOString());
+      url.searchParams.set("timeMax", timeMax.toISOString());
+      url.searchParams.set("singleEvents", "true");
+      url.searchParams.set("maxResults", "2500");
+      url.searchParams.set("fields", EVENT_FIELDS);
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        console.error("events.list failed", res.status, await res.text());
+        return null;
+      }
+      const data = (await res.json()) as { timeZone?: string; nextPageToken?: string; items?: CalendarItem[] };
+      if (data.timeZone) calendarTimeZone = data.timeZone;
+      items.push(...(data.items ?? []));
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+  } catch (e) {
+    console.error("events.list failed", e);
+    return null;
+  }
 
   return itemsToBusy(items, calendarTimeZone);
 }
@@ -116,20 +122,26 @@ export async function insertEvent(userId: string, input: CalendarEventInput): Pr
 
   const token = await getAccessToken(userId);
   if (!token) return null;
-  const res = await fetch(`${API}/calendars/primary/events`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      summary: input.title,
-      location: input.location,
-      description: input.description,
-      start: { dateTime: input.start.toISOString() },
-      end: { dateTime: input.end.toISOString() },
-    }),
-  });
-  if (!res.ok) {
-    console.error("events.insert failed", res.status, await res.text());
+  // 書き込めなかったときは null を返し、呼び出し元が .ics と追加リンクのメールに切り替える
+  try {
+    const res = await fetch(`${API}/calendars/primary/events`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        summary: input.title,
+        location: input.location,
+        description: input.description,
+        start: { dateTime: input.start.toISOString() },
+        end: { dateTime: input.end.toISOString() },
+      }),
+    });
+    if (!res.ok) {
+      console.error("events.insert failed", res.status, await res.text());
+      return null;
+    }
+    return ((await res.json()) as { id: string }).id;
+  } catch (e) {
+    console.error("events.insert failed", e);
     return null;
   }
-  return ((await res.json()) as { id: string }).id;
 }
