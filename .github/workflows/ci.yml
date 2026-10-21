@@ -7,7 +7,9 @@ on:
 
 jobs:
   web:
-    runs-on: ubuntu-latest
+    # ubuntu-latest は予告なく新しい版に切り替わる（2026-10 に 26.04 になり、Playwright 1.56 が非対応で e2e が失敗）。
+    # 版を上げるときは Playwright の対応状況を確認し、両方のジョブを同じ PR で変える
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: web
@@ -29,7 +31,7 @@ jobs:
       - run: npm run build
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: web
