@@ -135,6 +135,11 @@ function currentSlots(event: Event & { slots: Slot[] }) {
   return event.slots.filter((s) => s.round === event.round).sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
+/** 開始時刻を過ぎていない候補。判定や期限の処理が遅れた場合（サーバーの停止など）に、過去の日時で確定しないようにする */
+export function upcomingSlots<T extends { start: Date }>(slots: T[], now: Date): T[] {
+  return slots.filter((s) => s.start > now);
+}
+
 async function notifyTravelUncomputed(event: Event & { organizer: User }, members: User[]) {
   const subject = `【${event.title}】移動時間を計算できませんでした`;
   const body = `${TRAVEL_UNCOMPUTED_NOTICE}\n\n${eventUrl(event.id)}`;
@@ -155,13 +160,15 @@ export async function judgeEvent(eventId: string, now = new Date()) {
 
   try {
     const event = await loadEvent(eventId);
-    const slots = currentSlots(event);
+    const allSlots = currentSlots(event);
+    // 開始時刻を過ぎた候補は判定しない（結果も保存しない）
+    const slots = upcomingSlots(allSlots, now);
     const members = event.members.filter((m) => m.joinedAt <= now);
 
-    await prisma.slotResult.deleteMany({ where: { slotId: { in: slots.map((s) => s.id) } } });
+    await prisma.slotResult.deleteMany({ where: { slotId: { in: allSlots.map((s) => s.id) } } });
     const uncomputed: User[] = [];
     const allResults: { slotId: string; memberId: string; available: boolean }[] = [];
-    for (const m of members) {
+    for (const m of slots.length > 0 ? members : []) {
       const evals = await evaluateMember(m, slots, event.meetingPlace);
       await saveResults(m.id, evals, false);
       if (evals.some((e) => !e.travelComputed)) uncomputed.push(m.user);
@@ -177,7 +184,7 @@ export async function judgeEvent(eventId: string, now = new Date()) {
     if (decision.kind === "CONFIRM") {
       // confirmEvent は選択待ちの状態からのみ確定するため、一度経由させる
       await prisma.event.update({ where: { id: eventId }, data: { status: "AWAITING_CHOICE" } });
-      await confirmEvent(eventId, decision.slotId);
+      await confirmEvent(eventId, decision.slotId, { now });
     } else if (decision.kind === "CHOOSE") {
       const deadline = addMinutes(now, CHOICE_DEADLINE_HOURS * 60);
       await prisma.event.update({
@@ -208,10 +215,11 @@ export async function judgeEvent(eventId: string, now = new Date()) {
       await notify(
         event.organizer,
         `【${event.title}】全員が参加できる枠がありませんでした`,
-        (bestSlot
-          ? `最も多く参加できるのは ${formatSlot(bestSlot.start, bestSlot.end)}（${best.availableCount}/${best.total}人）です。\n`
-          : "") +
-          `決行する・候補を出し直す・中止する、のどれかを選んでください。\n` +
+        (slots.length === 0
+          ? "判定の時点で、候補の日時がすべて過ぎていました。候補を出し直すか、中止してください。\n"
+          : (bestSlot
+              ? `最も多く参加できるのは ${formatSlot(bestSlot.start, bestSlot.end)}（${best.availableCount}/${best.total}人）です。\n`
+              : "") + `決行する・候補を出し直す・中止する、のどれかを選んでください。\n`) +
           `${formatDateTime(deadline)} までに選ばない場合、この調整は中止になります。\n${eventUrl(eventId)}/choose`,
       );
       for (const m of event.members) {
@@ -255,17 +263,44 @@ export async function cancelEvent(eventId: string, { auto }: { auto: boolean }) 
   const reason = auto
     ? `全員が参加できる枠がなく、主催者の対応期限（${formatDateTime(event.choiceDeadline!)}）を過ぎたため、この調整は中止になりました。`
     : `全員が参加できる枠がなかったため、主催者の ${event.organizer.name} さんがこの調整を中止しました。`;
+  await notifyCancelled(event, reason, { skipOrganizer: !auto });
+}
+
+/** 主催者の選択期限が過ぎたが、全員が参加できる枠の開始時刻がすべて過ぎていた場合に中止する */
+async function cancelPassedChoice(eventId: string) {
+  const claimed = await prisma.event.updateMany({
+    where: { id: eventId, status: "AWAITING_CHOICE" },
+    data: { status: "CANCELLED" },
+  });
+  if (claimed.count === 0) return;
+
+  const event = await loadEvent(eventId);
+  const reason = "主催者の選択期限を過ぎ、全員が参加できる枠の開始時刻もすべて過ぎたため、この調整は中止になりました。";
+  await notifyCancelled(event, reason, { skipOrganizer: false });
+}
+
+async function notifyCancelled(
+  event: Awaited<ReturnType<typeof loadEvent>>,
+  reason: string,
+  { skipOrganizer }: { skipOrganizer: boolean },
+) {
   for (const m of event.members) {
-    if (!auto && m.userId === event.organizerId) continue;
-    await notify(m.user, `【${event.title}】調整は中止になりました`, `${reason}\n${eventUrl(eventId)}`);
+    if (skipOrganizer && m.userId === event.organizerId) continue;
+    await notify(m.user, `【${event.title}】調整は中止になりました`, `${reason}\n${eventUrl(event.id)}`);
   }
 }
 
-/** 予定を確定し、参加できるメンバーのカレンダーに書き込む（F-16, F-20） */
-export async function confirmEvent(eventId: string, slotId: string, reason?: string) {
+/** 予定を確定し、参加できるメンバーのカレンダーに書き込む（F-16, F-20）。開始時刻を過ぎた枠では確定しない */
+export async function confirmEvent(
+  eventId: string,
+  slotId: string,
+  { reason, now = new Date() }: { reason?: string; now?: Date } = {},
+) {
+  const target = await prisma.slot.findFirstOrThrow({ where: { id: slotId, eventId } });
+  if (target.start <= now) throw new Error("開始時刻を過ぎた枠では確定できません");
   const claimed = await prisma.event.updateMany({
     where: { id: eventId, status: { in: ["AWAITING_CHOICE", "AWAITING_FALLBACK"] } },
-    data: { status: "CONFIRMED", confirmedSlotId: slotId, confirmedAt: new Date() },
+    data: { status: "CONFIRMED", confirmedSlotId: slotId, confirmedAt: now },
   });
   if (claimed.count === 0) return;
 
@@ -441,9 +476,15 @@ export async function runDueJobs(now = new Date()) {
   });
   for (const e of expired) {
     const ids = await allOkSlotIds(e.id);
-    const slot = earliestSlot(e.slots.filter((s) => ids.includes(s.id)));
-    if (!slot) continue;
-    await confirmEvent(e.id, slot.id, "主催者の選択期限（24時間）を過ぎたため、最も早い枠で確定しました。");
+    const slot = earliestSlot(upcomingSlots(e.slots.filter((s) => ids.includes(s.id)), now));
+    if (!slot) {
+      await cancelPassedChoice(e.id);
+      continue;
+    }
+    await confirmEvent(e.id, slot.id, {
+      reason: "主催者の選択期限（24時間）を過ぎたため、最も早い枠で確定しました。",
+      now,
+    });
   }
 
   const abandoned = await prisma.event.findMany({
