@@ -23,6 +23,8 @@ npm run test:e2e        # 主要ブラウザ（Safari/Chrome/Firefox、スマホ
 npm run check:apis      # APIキー設定後、実際の外部APIに接続できるかを確認
 ```
 
+友人との試用で、運営者のパソコンをサーバーにする手順は [docs/local-trial.md](docs/local-trial.md) にあります。
+
 `npm run test:e2e` の初回は `npx playwright install chromium webkit firefox` でブラウザを入れてください。
 
 APIキーが未設定でも動きます。
