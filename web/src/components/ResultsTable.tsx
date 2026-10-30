@@ -30,27 +30,35 @@ export function ResultsTable({ view, highlight }: { view: EventView; highlight?:
           </tr>
         </thead>
         <tbody>
-          {view.summaries.map(({ slot, available, total, allOk }) => (
-            <tr
-              key={slot.id}
-              className={`border-b border-border ${highlight?.includes(slot.id) ? "bg-ok-bg" : ""}`}
-            >
-              <td className="py-2 pr-3 whitespace-nowrap">{formatSlot(slot.start, slot.end)}</td>
-              <td className="px-2 py-2 whitespace-nowrap">
-                <span className={allOk ? "font-bold text-ok" : ""}>
-                  {available}/{total}人{allOk && " 全員OK"}
-                </span>
-              </td>
-              {cols.map((m) => {
-                const r = m.results.find((x) => x.slotId === slot.id);
-                return (
-                  <td key={m.id} className="px-2 py-2 text-center">
-                    <Mark ok={r?.available} approx={r ? !r.travelComputed : false} />
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
+          {view.summaries.map(({ slot, available, total, allOk }) => {
+            // 判定の時点で開始時刻を過ぎていた候補は判定していない（scheduler.ts の upcomingSlots）
+            const skipped = view.event.judgedAt !== null && slot.start <= view.event.judgedAt;
+            return (
+              <tr
+                key={slot.id}
+                className={`border-b border-border ${highlight?.includes(slot.id) ? "bg-ok-bg" : ""}`}
+              >
+                <td className="py-2 pr-3 whitespace-nowrap">{formatSlot(slot.start, slot.end)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">
+                  {skipped ? (
+                    <span className="text-muted">判定時に開始済み</span>
+                  ) : (
+                    <span className={allOk ? "font-bold text-ok" : ""}>
+                      {available}/{total}人{allOk && " 全員OK"}
+                    </span>
+                  )}
+                </td>
+                {cols.map((m) => {
+                  const r = m.results.find((x) => x.slotId === slot.id);
+                  return (
+                    <td key={m.id} className="px-2 py-2 text-center">
+                      <Mark ok={r?.available} approx={r ? !r.travelComputed : false} />
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -4,6 +4,7 @@ import { ResultsTable } from "@/components/ResultsTable";
 import { SlotEditor } from "@/components/SlotEditor";
 import { SubmitButton } from "@/components/SubmitButton";
 import { loadEventView } from "@/lib/event-view";
+import { upcomingSlots } from "@/lib/scheduler";
 import { requireUser } from "@/lib/session";
 import { formatDateTime, formatSlot } from "@/lib/time";
 
@@ -17,9 +18,11 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
     redirect(`/events/${id}`);
   }
   const choose = chooseSlot.bind(null, id);
+  // 開始時刻を過ぎた枠は選べない（確定の処理でも弾く）
+  const upcomingIds = new Set(upcomingSlots(view.slots, new Date()).map((s) => s.id));
 
   if (event.status === "AWAITING_CHOICE") {
-    const ok = summaries.filter((s) => s.allOk);
+    const ok = summaries.filter((s) => s.allOk && upcomingIds.has(s.slot.id));
     return (
       <div className="space-y-5">
         <div>
@@ -29,28 +32,34 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
             {event.choiceDeadline && `${formatDateTime(event.choiceDeadline)} までに選ばない場合、最も早い枠で自動的に確定します。`}
           </p>
         </div>
-        <form action={choose} className="card space-y-3">
-          {ok.map(({ slot }, i) => (
-            <label
-              key={slot.id}
-              className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-[:checked]:border-primary"
-            >
-              <input type="radio" name="slotId" value={slot.id} required defaultChecked={i === 0} className="mt-1" />
-              <span>
-                <span className="block font-medium">{formatSlot(slot.start, slot.end)}</span>
-                {lateMembers.length > 0 && (
-                  <span className="block text-xs text-muted">
-                    後から参加：
-                    {lateMembers
-                      .map((m) => `${m.name} ${m.results.find((r) => r.slotId === slot.id)?.available ? "〇" : "×"}`)
-                      .join("、")}
-                  </span>
-                )}
-              </span>
-            </label>
-          ))}
-          <SubmitButton>この枠で確定する</SubmitButton>
-        </form>
+        {ok.length === 0 ? (
+          <p className="notice-warn">
+            全員が参加できる枠は、すべて開始時刻を過ぎました。選択期限を過ぎると、この調整は中止になります。
+          </p>
+        ) : (
+          <form action={choose} className="card space-y-3">
+            {ok.map(({ slot }, i) => (
+              <label
+                key={slot.id}
+                className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-[:checked]:border-primary"
+              >
+                <input type="radio" name="slotId" value={slot.id} required defaultChecked={i === 0} className="mt-1" />
+                <span>
+                  <span className="block font-medium">{formatSlot(slot.start, slot.end)}</span>
+                  {lateMembers.length > 0 && (
+                    <span className="block text-xs text-muted">
+                      後から参加：
+                      {lateMembers
+                        .map((m) => `${m.name} ${m.results.find((r) => r.slotId === slot.id)?.available ? "〇" : "×"}`)
+                        .join("、")}
+                    </span>
+                  )}
+                </span>
+              </label>
+            ))}
+            <SubmitButton>この枠で確定する</SubmitButton>
+          </form>
+        )}
         <section className="card space-y-2">
           <h2 className="font-semibold">判定結果</h2>
           <ResultsTable view={view} highlight={ok.map((s) => s.slot.id)} />
@@ -59,9 +68,9 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
     );
   }
 
-  const ranked = [...summaries].sort(
-    (a, b) => b.available - a.available || a.slot.start.getTime() - b.slot.start.getTime(),
-  );
+  const ranked = summaries
+    .filter((s) => upcomingIds.has(s.slot.id))
+    .sort((a, b) => b.available - a.available || a.slot.start.getTime() - b.slot.start.getTime());
   return (
     <div className="space-y-5">
       <div>
@@ -71,23 +80,27 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
           {event.choiceDeadline && `${formatDateTime(event.choiceDeadline)} までに選ばない場合、この調整は中止になります。`}
         </p>
       </div>
-      <form action={choose} className="card space-y-3">
-        <h2 className="font-semibold">この枠で決行する</h2>
-        {ranked.map(({ slot, available, total }, i) => (
-          <label
-            key={slot.id}
-            className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 has-[:checked]:border-primary"
-          >
-            <input type="radio" name="slotId" value={slot.id} required defaultChecked={i === 0} />
-            <span className="flex-1">{formatSlot(slot.start, slot.end)}</span>
-            <span className="text-sm font-semibold">
-              {available}/{total}人
-            </span>
-          </label>
-        ))}
-        <p className="text-xs text-muted">参加できないメンバーは「不参加」になります。</p>
-        <SubmitButton>この枠で決行する</SubmitButton>
-      </form>
+      {ranked.length === 0 ? (
+        <p className="notice-warn">候補の日時がすべて過ぎているため、決行はできません。候補を出し直すか、中止してください。</p>
+      ) : (
+        <form action={choose} className="card space-y-3">
+          <h2 className="font-semibold">この枠で決行する</h2>
+          {ranked.map(({ slot, available, total }, i) => (
+            <label
+              key={slot.id}
+              className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 has-[:checked]:border-primary"
+            >
+              <input type="radio" name="slotId" value={slot.id} required defaultChecked={i === 0} />
+              <span className="flex-1">{formatSlot(slot.start, slot.end)}</span>
+              <span className="text-sm font-semibold">
+                {available}/{total}人
+              </span>
+            </label>
+          ))}
+          <p className="text-xs text-muted">参加できないメンバーは「不参加」になります。</p>
+          <SubmitButton>この枠で決行する</SubmitButton>
+        </form>
+      )}
       <form action={repropose.bind(null, id)} className="card space-y-3">
         <h2 className="font-semibold">候補を出し直す</h2>
         <p className="text-sm text-muted">新しい候補で募集をやり直します（1時間後に再判定）。</p>

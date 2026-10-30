@@ -120,6 +120,7 @@ npm run dev              # http://localhost:3000
 - 状態遷移：`COLLECTING → JUDGING → (CONFIRMED | AWAITING_CHOICE | AWAITING_FALLBACK)`。
   `AWAITING_FALLBACK` は決行で `CONFIRMED`、出し直しで `COLLECTING`、中止または対応期限（募集開始から2時間）切れで `CANCELLED`。
   二重実行を防ぐため、状態の切り替えは `updateMany` で条件付きに行う（`web/src/lib/scheduler.ts`）。
+- 開始時刻を過ぎた候補は判定・確定しない（`upcomingSlots`）。サーバーが止まっていて処理が遅れても、過去の日時で確定させないため。
 - グループ：招待リンクはグループごと。調整の参加者は作成時のグループメンバー。あとからグループに参加した人は
   進行中の調整に「あとから参加」として加わる（`web/src/lib/groups.ts`）。
 - 判定・期限・リマインドは `scheduleWake()`（`web/src/lib/timers.ts`）で時刻ちょうどに実行する。

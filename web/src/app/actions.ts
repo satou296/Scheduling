@@ -32,8 +32,10 @@ function parseSlots(form: FormData): { start: Date; end: Date }[] {
     end: parseJstDateTime(date, ends[i]),
   }));
   if (slots.length === 0) throw new Error("候補を1つ以上入力してください");
+  const now = new Date();
   for (const s of slots) {
     if (s.end <= s.start) throw new Error("終了時刻は開始時刻より後にしてください");
+    if (s.start <= now) throw new Error("開始時刻を過ぎた日時は候補にできません");
   }
   return slots;
 }

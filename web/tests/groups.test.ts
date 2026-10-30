@@ -44,7 +44,7 @@ async function groupWithEvent(ownerId: string, status: "COLLECTING" | "CONFIRMED
 describe("joinGroup", () => {
   it("募集中の調整にメンバーとして加わり、未連携なら〇×を保存する", async () => {
     const owner = await user();
-    const { group, event } = await groupWithEvent(owner.id, "COLLECTING", ["2026-12-01T10:00", "2026-12-01T12:00"]);
+    const { group, event } = await groupWithEvent(owner.id, "COLLECTING", ["2099-12-01T10:00", "2099-12-01T12:00"]);
     const manual = await user(false);
     await joinGroup(group.id, manual.id, () => true);
 
