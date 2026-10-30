@@ -72,6 +72,8 @@ npm run db:push
 npm run dev              # http://localhost:3000
 ```
 
+- Node.js は **22.23.4 以上の 22 系、または 24.22.1 以上**（`web/package.json` の `engines`。2026-10 の証明書の問題の修正版）。
+  `web/.npmrc` の `engine-strict=true` で、古い Node.js では `npm install` / `npm ci` が失敗する。証明書の確認を無効にして回避しない。
 - `DEV_LOGIN=true` で開発用ログイン（名前だけ）とモックカレンダー（設定画面で予定を登録）が使える。
   経路検索キー未設定時はモックの所要時間、SMTP 未設定時はメールをコンソール出力＋ `/dev/mails` に記録。
 - UI を変更したら、開発用ログインで実際に画面を操作して確認する（スマホ幅 390px とデスクトップの両方）。

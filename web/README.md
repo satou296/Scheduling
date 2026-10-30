@@ -10,6 +10,9 @@
 
 ## 起動
 
+Node.js は **22.23.4 以上の 22 系、または 24.22.1 以上** が必要です（2026年10月の証明書の問題の修正版。`node -v` で確認）。
+古い版では `npm install` / `npm ci` がエラーで止まるので、[nodejs.org](https://nodejs.org/) から入れ直してください。
+
 ```bash
 npm install
 npm run env:init        # .env を作成し、SESSION_SECRET にランダムな値を設定
