@@ -1,4 +1,5 @@
 import { createEvent } from "@/app/actions";
+import { ActionForm } from "@/components/ActionForm";
 import { GroupPicker } from "@/components/GroupPicker";
 import { SlotEditor } from "@/components/SlotEditor";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -23,7 +24,7 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
           作成から1時間後に自動で判定します（すぐに判定することもできます）。
         </p>
       </div>
-      <form action={createEvent} className="space-y-5">
+      <ActionForm action={createEvent} className="space-y-5">
         <section className="card">
           <GroupPicker groups={groups} defaultGroupId={defaultGroupId} />
         </section>
@@ -42,7 +43,7 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
           <SlotEditor />
         </section>
         <SubmitButton>作成する</SubmitButton>
-      </form>
+      </ActionForm>
     </div>
   );
 }

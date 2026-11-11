@@ -94,6 +94,9 @@ npm run dev              # http://localhost:3000
 - `params` / `searchParams` / `cookies()` は Promise（`await` が必要）。ページの型は `PageProps<"/events/[id]">` を使う。
   新しいルートを追加したら `npx next typegen` を実行しないと型エラーになる。
 - `middleware` は `proxy` に名前が変わっている。
+- **本番ではサーバーで投げたエラーの文章が画面に届かない**（共通のメッセージに置き換わる）。入力の誤りなど理由を見せたいエラーは
+  `UserError`（`web/src/lib/action-state.ts`）で投げ、Server Action を `runAction` で包んで `{ error }` を返し、フォームは `ActionForm` で表示する。
+  予期しないエラーは `src/app/error.tsx` で表示する（Next.js 16 では再試行の関数は `retry`）。
 
 ### Tailwind CSS v4
 - 独自クラス（`.btn` など）は `@layer components` ではなく **`@utility`** で定義する（`@apply` で他の独自クラスを参照できないため）。

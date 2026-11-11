@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { judgeNow, saveAnswers } from "@/app/actions";
+import { ActionForm } from "@/components/ActionForm";
 import { AnswerInputs } from "@/components/AnswerInputs";
 import { CopyButton } from "@/components/CopyButton";
 import { ResultsTable } from "@/components/ResultsTable";
@@ -147,9 +148,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
               <p className="text-sm text-muted">{formatDateTime(event.judgeAt)} に自動で判定します。</p>
             </div>
             {isOrganizer && (
-              <form action={judgeNow.bind(null, event.id)}>
+              <ActionForm action={judgeNow.bind(null, event.id)}>
                 <SubmitButton pendingText="判定中…">今すぐ判定</SubmitButton>
-              </form>
+              </ActionForm>
             )}
           </div>
           <h3 className="pt-2 text-sm font-semibold">候補</h3>
@@ -196,11 +197,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
       )}
 
       {collecting && !user.calendarLinked && (
-        <form action={saveAnswers.bind(null, event.id)} className="card space-y-3">
+        <ActionForm action={saveAnswers.bind(null, event.id)} className="card space-y-3">
           <h2 className="font-semibold">あなたの〇×</h2>
           <AnswerInputs slots={slots} answers={view.myAnswers} />
           <SubmitButton className="btn-secondary">回答を保存</SubmitButton>
-        </form>
+        </ActionForm>
       )}
     </div>
   );

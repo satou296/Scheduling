@@ -114,3 +114,7 @@ body {
 @utility notice-warn {
   @apply rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn;
 }
+
+@utility notice-error {
+  @apply rounded-lg bg-ng-bg px-3 py-2 text-sm text-ng;
+}

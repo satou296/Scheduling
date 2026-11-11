@@ -1,4 +1,5 @@
 import type { Event, EventMember, Origin, Slot, User } from "@prisma/client";
+import { UserError } from "./action-state";
 import { getBusy, insertEvent } from "./calendar";
 import { prisma } from "./db";
 import { decide, earliestSlot, isFree, summarize, travelWindow } from "./judge";
@@ -297,7 +298,7 @@ export async function confirmEvent(
   { reason, now = new Date() }: { reason?: string; now?: Date } = {},
 ) {
   const target = await prisma.slot.findFirstOrThrow({ where: { id: slotId, eventId } });
-  if (target.start <= now) throw new Error("開始時刻を過ぎた枠では確定できません");
+  if (target.start <= now) throw new UserError("開始時刻を過ぎた枠では確定できません");
   const claimed = await prisma.event.updateMany({
     where: { id: eventId, status: { in: ["AWAITING_CHOICE", "AWAITING_FALLBACK"] } },
     data: { status: "CONFIRMED", confirmedSlotId: slotId, confirmedAt: now },
@@ -415,7 +416,7 @@ export async function reproposeSlots(eventId: string, slots: { start: Date; end:
     where: { id: eventId },
     include: { members: { include: { user: true } } },
   });
-  if (event.status !== "AWAITING_FALLBACK") throw new Error("候補を出し直せる状態ではありません");
+  if (event.status !== "AWAITING_FALLBACK") throw new UserError("候補を出し直せる状態ではありません");
   const round = event.round + 1;
   const organizer = event.members.find((m) => m.userId === event.organizerId);
   // 対応期限切れの中止と競合しないよう、対応待ちの間だけ切り替える
@@ -433,7 +434,7 @@ export async function reproposeSlots(eventId: string, slots: { start: Date; end:
         travelUncomputed: false,
       },
     });
-    if (claimed.count === 0) throw new Error("候補を出し直せる状態ではありません");
+    if (claimed.count === 0) throw new UserError("候補を出し直せる状態ではありません");
     await tx.slot.createMany({ data: slots.map((s) => ({ ...s, eventId, round })) });
   });
   scheduleWake(addMinutes(now, JUDGE_DELAY_MIN));
