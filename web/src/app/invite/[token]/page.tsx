@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { joinGroupByInvite } from "@/app/actions";
+import { ActionForm } from "@/components/ActionForm";
 import { AnswerInputs } from "@/components/AnswerInputs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -37,7 +38,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         </p>
       </div>
 
-      <form action={action} className="space-y-4">
+      <ActionForm action={action} className="space-y-4">
         {events.length === 0 && (
           <p className="card text-sm text-muted">進行中の調整はありません。参加すると、次の調整から加わります。</p>
         )}
@@ -78,7 +79,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
           <p className="text-xs text-muted">カレンダーを連携すると入力は不要になります（設定から連携できます）。</p>
         )}
         <SubmitButton>このグループに参加する</SubmitButton>
-      </form>
+      </ActionForm>
     </div>
   );
 }

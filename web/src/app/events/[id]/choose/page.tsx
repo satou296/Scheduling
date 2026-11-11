@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { cancelByOrganizer, chooseSlot, repropose } from "@/app/actions";
+import { ActionForm } from "@/components/ActionForm";
 import { ResultsTable } from "@/components/ResultsTable";
 import { SlotEditor } from "@/components/SlotEditor";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -37,7 +38,7 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
             全員が参加できる枠は、すべて開始時刻を過ぎました。選択期限を過ぎると、この調整は中止になります。
           </p>
         ) : (
-          <form action={choose} className="card space-y-3">
+          <ActionForm action={choose} className="card space-y-3">
             {ok.map(({ slot }, i) => (
               <label
                 key={slot.id}
@@ -58,7 +59,7 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
               </label>
             ))}
             <SubmitButton>この枠で確定する</SubmitButton>
-          </form>
+          </ActionForm>
         )}
         <section className="card space-y-2">
           <h2 className="font-semibold">判定結果</h2>
@@ -83,7 +84,7 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
       {ranked.length === 0 ? (
         <p className="notice-warn">候補の日時がすべて過ぎているため、決行はできません。候補を出し直すか、中止してください。</p>
       ) : (
-        <form action={choose} className="card space-y-3">
+        <ActionForm action={choose} className="card space-y-3">
           <h2 className="font-semibold">この枠で決行する</h2>
           {ranked.map(({ slot, available, total }, i) => (
             <label
@@ -99,19 +100,19 @@ export default async function ChoosePage({ params }: PageProps<"/events/[id]/cho
           ))}
           <p className="text-xs text-muted">参加できないメンバーは「不参加」になります。</p>
           <SubmitButton>この枠で決行する</SubmitButton>
-        </form>
+        </ActionForm>
       )}
-      <form action={repropose.bind(null, id)} className="card space-y-3">
+      <ActionForm action={repropose.bind(null, id)} className="card space-y-3">
         <h2 className="font-semibold">候補を出し直す</h2>
         <p className="text-sm text-muted">新しい候補で募集をやり直します（1時間後に再判定）。</p>
         <SlotEditor />
         <SubmitButton className="btn-secondary">候補を出し直す</SubmitButton>
-      </form>
-      <form action={cancelByOrganizer.bind(null, id)} className="card space-y-3">
+      </ActionForm>
+      <ActionForm action={cancelByOrganizer.bind(null, id)} className="card space-y-3">
         <h2 className="font-semibold">中止する</h2>
         <p className="text-sm text-muted">今回の調整は中止します。メンバーにメールでお知らせします。</p>
         <SubmitButton className="btn-danger">この調整を中止する</SubmitButton>
-      </form>
+      </ActionForm>
       <section className="card space-y-2">
         <h2 className="font-semibold">判定結果</h2>
         <ResultsTable view={view} />

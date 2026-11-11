@@ -185,6 +185,31 @@ test("全員不可のとき、主催者が中止を選ぶとメンバーにも�
   await expect(busy.getByText("この調整は中止になりました")).toBeVisible();
 });
 
+test("入力に誤りがあると、理由を表示して入力内容を残す", async ({ browser }, testInfo) => {
+  const ctx = testInfo.project.use;
+  const suffix = `${testInfo.project.name}-${testInfo.retry}`;
+
+  const org = await newUser(browser, ctx, `入力誤り-${suffix}`, { calendar: true });
+  await org.goto("/events/new");
+  await org.locator('select[name="groupId"]').selectOption("");
+  await org.getByPlaceholder("例：大学の友達").fill(`入力誤り-${suffix}`);
+  await org.getByPlaceholder("例：週末ボウリング").fill("カラオケ");
+  await org.getByPlaceholder("例：渋谷駅 ハチ公前").fill("渋谷駅");
+  await fillSlot(org, 0, "2020-01-10", "13:00", "16:00");
+  await org.getByRole("button", { name: "作成する" }).click();
+
+  // 本番でもエラーの理由が届くよう、サーバーから戻り値で返してフォームの下に表示する
+  await expect(org.getByRole("main").getByRole("alert")).toHaveText("開始時刻を過ぎた日時は候補にできません");
+  await expect(org).toHaveURL(/\/events\/new$/);
+  await expect(org.getByPlaceholder("例：週末ボウリング")).toHaveValue("カラオケ");
+  await expect(org.locator('input[name="slot_start"]').first()).toHaveValue("13:00");
+
+  // 直して送り直すと作成できる
+  await fillSlot(org, 0, "2099-12-10", "13:00", "16:00");
+  await org.getByRole("button", { name: "作成する" }).click();
+  await org.waitForURL(/\/events\/.+created=1/);
+});
+
 test("ログインしていなくても、トップページとプライバシーポリシーを見られる", async ({ browser }, testInfo) => {
   const page = await (await browser.newContext(testInfo.project.use)).newPage();
 

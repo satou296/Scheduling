@@ -1,4 +1,5 @@
 import { createGroup } from "@/app/actions";
+import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/session";
 
@@ -12,13 +13,13 @@ export default async function NewGroupPage() {
           作成すると招待リンクが発行されます。同じグループで何度でも日程調整ができます。
         </p>
       </div>
-      <form action={createGroup} className="card space-y-4">
+      <ActionForm action={createGroup} className="card space-y-4">
         <label className="block">
           <span className="label">グループ名</span>
           <input name="name" className="input" placeholder="例：大学の友達" required />
         </label>
         <SubmitButton>作成して招待リンクを発行</SubmitButton>
-      </form>
+      </ActionForm>
     </div>
   );
 }

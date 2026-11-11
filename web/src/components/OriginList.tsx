@@ -1,5 +1,6 @@
 import type { Origin } from "@prisma/client";
 import { addOrigin, deleteOrigin, setDefaultOrigin } from "@/app/actions";
+import { ActionForm } from "./ActionForm";
 import { SubmitButton } from "./SubmitButton";
 
 /** 出発地点の一覧・追加・標準の切り替え（F-03） */
@@ -30,12 +31,12 @@ export function OriginList({ origins, path }: { origins: Origin[]; path: string 
           ))}
         </ul>
       )}
-      <form action={addOrigin} className="flex flex-wrap gap-2">
+      <ActionForm action={addOrigin} className="flex flex-wrap gap-2">
         <input type="hidden" name="path" value={path} />
         <input name="label" className="input w-28" placeholder="名称（自宅）" />
         <input name="address" className="input min-w-48 flex-1" placeholder="住所（例：東京都渋谷区…）" required />
         <SubmitButton className="btn-secondary">追加</SubmitButton>
-      </form>
+      </ActionForm>
     </div>
   );
 }
